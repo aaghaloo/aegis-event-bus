@@ -1,23 +1,28 @@
+# .github/workflows/ci.yml
 name: Aegis CI/CD Pipeline
 
 on:
-  push:        { branches: [ main ] }
-  pull_request: { branches: [ main ] }
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# This is the new security hardening section
+permissions:
+  contents: read
 
 jobs:
-# ────────────────────────── unit-tests ──────────────────────────
   test:
     runs-on: ubuntu-latest
-
-    # spin-up an ephemeral Postgres that mimics prod
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB:       test_db
-          POSTGRES_USER:     test_user
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
-        ports: [ "5432:5432" ]
+        ports:
+          - "5432:5432"
         options: >-
           --health-cmd "pg_isready -U test_user -d test_db"
           --health-interval 10s
@@ -25,32 +30,34 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: pip install -r requirements.txt
 
-      - name: Run pytest
+      - name: Run Pytest
         env:
-          DATABASE_URL: postgresql+psycopg2://test_user:test_password@localhost:5432/test_db
+          DATABASE_URL: "postgresql+psycopg2://test_user:test_password@localhost:5432/test_db"
         run: pytest -v
 
-# ───────────────────────────── linters ───────────────────────────
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-
-      # THIS IS THE FIX: Install from the requirements file for consistency
-      - name: Install dependencies
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Dependencies
         run: pip install -r requirements.txt
-
-      - name: Ruff & Black checks
+      - name: Ruff & Black Checks
         run: |
           ruff check .
           black --check .
