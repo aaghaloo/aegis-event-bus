@@ -1,12 +1,23 @@
 # .pre-commit-config.yaml
+
 repos:
   - repo: https://github.com/psf/black
     rev: 25.1.0
     hooks:
       - id: black
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.4.10
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: no-bom
+        name: Ensure requirements.txt has no UTF-8 BOM
+        language: python
+        entry: python scripts/no_bom_check.py
+        pass_filenames: false
+        files: ^requirements\.txt$
