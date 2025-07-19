@@ -3,12 +3,12 @@ Alembic migration environment.
 Keeps DATABASE_URL in sync with .env and exposes SQLModel metadata.
 """
 
-from logging.config import fileConfig
 import os
+from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
 
 load_dotenv()  # .env → env vars
 database_url = os.getenv("DATABASE_URL")

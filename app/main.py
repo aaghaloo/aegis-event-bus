@@ -1,9 +1,10 @@
 # app/main.py
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from . import db, endpoints, security, logging_config
+from . import db, endpoints, logging_config, security
 
 # ---------- logging & metrics set‑up ----------
 logging_config.setup_logging()

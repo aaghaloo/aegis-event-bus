@@ -1,8 +1,9 @@
 # app/models.py
 import datetime as dt
 from typing import Optional
+
 from sqlalchemy import Column, DateTime
-from sqlmodel import SQLModel, Field
+from sqlmodel import Field, SQLModel
 
 
 class AuditLog(SQLModel, table=True):

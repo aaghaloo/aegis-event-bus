@@ -4,11 +4,12 @@ import os
 # This is the key fix: importing timedelta directly from the datetime module
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from dotenv import load_dotenv
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 from . import schemas
 

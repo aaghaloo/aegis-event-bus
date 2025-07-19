@@ -1,6 +1,7 @@
 # app/logging_config.py
 import logging
 import sys
+
 import structlog
 from structlog.processors import JSONRenderer, TimeStamper
 

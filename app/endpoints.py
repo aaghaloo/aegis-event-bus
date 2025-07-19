@@ -1,11 +1,12 @@
 # app/endpoints.py
 import json
 import os
-import structlog
 from uuid import uuid4
+
+import paho.mqtt.publish as mqtt_publish
+import structlog
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, select, text
-import paho.mqtt.publish as mqtt_publish
 
 from . import archivist, schemas, security
 from .db import get_session

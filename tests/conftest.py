@@ -1,22 +1,36 @@
-# tests/conftest.py  — final working snippet
+# tests/conftest.py
+"""
+Pytest fixtures for the Event Bus service.
+
+We intentionally set DATABASE_URL *before* importing `app.db` so the
+application uses an in‑memory SQLite engine during tests.
+
+Ruff rule E402 (imports not at top) is suppressed because of this one
+required assignment.
+"""
+
+# ruff: noqa: E402
+
 import os
 
+# Must be set before importing app.db so its engine points to SQLite memory.
 os.environ["DATABASE_URL"] = "sqlite://"
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import SQLModel, create_engine, Session
-from sqlalchemy.pool import StaticPool  # ← added
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
+
 import app.db as db
 from app.main import app
 
 # ---------- shared in-memory engine ----------
 engine = create_engine(
-    "sqlite://",  # positional arg first
+    "sqlite://",  # single in-memory DB
     connect_args={"check_same_thread": False},
-    poolclass=StaticPool,  # one global connection
+    poolclass=StaticPool,  # one global connection so tables persist across sessions
 )
-db.engine = engine  # app uses this engine
+db.engine = engine  # make the app use this engine
 # ---------------------------------------------
 
 
@@ -30,5 +44,6 @@ def session_fixture():
 
 @pytest.fixture(name="client")
 def client_fixture(session: Session):
+    # Override dependency to always return our shared session
     db.get_session = lambda: session
     yield TestClient(app)

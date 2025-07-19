@@ -1,10 +1,21 @@
 # pyproject.toml
+
 [tool.black]
 line-length = 88
 target-version = ["py311"]
+# Optional (locks version so CI & local stay identical):
+# required-version = "25.1.0"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
+# (Optional) add ignores or per-file-ignores here later.
+
 [tool.ruff.format]
-line-length = 88
+# Only put *formatting* options here if you customize them.
+# For now we leave it empty so Ruff uses defaults
+# (indent-style, quote-style, etc. not needed unless you want custom behavior).

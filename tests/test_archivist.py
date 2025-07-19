@@ -1,7 +1,8 @@
 # tests/test_archivist.py
 
-from pathlib import Path
 import shutil
+from pathlib import Path
+
 from app.archivist import create_job_folders
 
 # Define a temporary folder name for our tests to use

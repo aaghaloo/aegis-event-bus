@@ -1,9 +1,10 @@
 # app/cli.py
 import datetime as dt
 import os
+
 import typer
-from jose import jwt
 from dotenv import load_dotenv
+from jose import jwt
 
 load_dotenv()
 app = typer.Typer()
