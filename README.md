@@ -88,3 +88,8 @@ You can generate a long-lived token for administrative or testing purposes using
 
 ```bash
 python -m app.cli create-token admin --minutes 1440
+
+### Development Conventions
+- Python formatting & linting enforced via pre-commit (Black + Ruff).
+- Line endings: LF enforced via `.gitattributes`.
+- Run `pre-commit install` after cloning.
