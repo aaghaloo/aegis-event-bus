@@ -1,131 +1,138 @@
-#!/usr/bin/env python
+# scripts/make_full_audit.py
 """
-Generate a comprehensive audit bundle (single markdown file) that inlines
-key source, infra, and test files for offline / external review.
-
-Run:
+Generate a consolidated audit markdown containing:
+ - File tree
+ - Per-file SHA256 + size
+ - Full source listings (safe set)
+Usage:
     python scripts/make_full_audit.py
-Outputs:
-    audit_report_full.md
+    python scripts/make_full_audit.py --include-secrets
 """
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
-import textwrap
+import hashlib
 from pathlib import Path
+from typing import Iterable
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent
 
-PRIMARY_FILES = [
-    "Dockerfile",
-    "docker-compose.yml",
-    "alembic.ini",
-    "pyproject.toml",
-    "requirements.txt",
-    ".pre-commit-config.yaml",
-    "README.md",
-    "app/main.py",
-    "app/db.py",
-    "app/endpoints.py",
-    "app/security.py",
-    "app/schemas.py",
-    "app/logging_config.py",
-    "app/cli.py",
-    "app/archivist.py",
-    "app/models.py",
-    "migrations/env.py",
-    "migrations/versions",
-    "tests/conftest.py",
-    "tests/test_api.py",
-    "tests/test_pagination.py",
-    "tests/test_archivist.py",
-    "scripts/gen-mqtt-cert.sh",
-]
+DEFAULT_EXCLUDES = {
+    ".git",
+    ".ruff_cache",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+    "eventbus.db",
+    "test.db",
+    "pgdata",
+    "mosquitto_data",
+    "alembic/versions/__pycache__",
+}
 
-OUTPUT_FILE = REPO_ROOT / "audit_report_full.md"
+# Secrets you normally do NOT embed
+SECRET_FILES = {
+    ".env",
+    "mosquitto/certs/ca.key",
+    "mosquitto/certs/server.key",
+    "tls.key",
+    "tls.crt",
+    "ca.key",
+}
+
+SAFE_EXTENSIONS = {
+    ".py",
+    ".toml",
+    ".yml",
+    ".yaml",
+    ".ini",
+    ".md",
+    ".txt",
+    ".conf",
+    ".sh",
+    ".sql",
+    ".dockerfile",
+    "dockerfile",
+}
+
+OUTPUT = ROOT / "audit_report.md"
 
 
-def list_tree(max_depth: int = 6) -> str:
-    """Return a code block listing the repo tree up to max_depth."""
-    lines: list[str] = []
-    root_depth = len(REPO_ROOT.parts)
-    for path in sorted(REPO_ROOT.rglob("*")):
-        if any(
-            skip in path.parts
-            for skip in (
-                ".git",
-                ".ruff_cache",
-                ".mypy_cache",
-                "__pycache__",
-                ".venv",
-            )
-        ):
+def iter_files() -> Iterable[Path]:
+    for p in ROOT.rglob("*"):
+        if p.is_dir():
             continue
-        depth = len(path.parts) - root_depth
-        if depth > max_depth:
+        rel = p.relative_to(ROOT)
+        # Skip excludes
+        if any(str(rel).startswith(ex) for ex in DEFAULT_EXCLUDES):
             continue
-        rel = path.relative_to(REPO_ROOT)
-        lines.append(str(rel).replace("\\", "/"))
-    return "```\n" + "\n".join(lines) + "\n```"
+        yield rel
 
 
-def read_text_file(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return f"[BINARY or NON-UTF8: {path.name}]"
-    except FileNotFoundError:
-        return "[MISSING]"
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
-def section_for_file(rel: str) -> str:
-    """Build a markdown section for a file or directory."""
-    path = REPO_ROOT / rel
-    header = f"### {rel}\n"
-    if path.is_dir():
-        child_chunks: list[str] = []
-        for child in sorted(path.rglob("*")):
-            if child.is_dir():
-                continue
-            rel_child = child.relative_to(REPO_ROOT)
-            content = read_text_file(child)
-            child_chunks.append(
-                "#### {name}\n\n```\n{body}\n```\n".format(
-                    name=rel_child,
-                    body=content,
-                )
-            )
-        body = "\n".join(child_chunks) if child_chunks else "_(empty)_\n"
-        return header + body
-    content = read_text_file(path)
-    return header + f"\n```\n{content}\n```\n"
+def is_source_file(rel: Path) -> bool:
+    if rel.name in SECRET_FILES:
+        return False
+    ext = rel.suffix.lower()
+    if ext in SAFE_EXTENSIONS:
+        return True
+    # allow Dockerfile (no ext)
+    if rel.name.lower() == "dockerfile":
+        return True
+    return False
 
 
-def generate() -> str:
-    now = dt.datetime.utcnow().strftime("%a, %b %d, %Y %H:%M:%S UTC")
-    out: list[str] = []
-    out.append(f"# Full Source Audit Bundle\n\nGenerated: {now}\n")
-    out.append("## Repository Tree (truncated)\n")
-    out.append(list_tree())
-    out.append("\n---\n\n## File Contents\n")
-    for rel in PRIMARY_FILES:
-        out.append(section_for_file(rel))
-        out.append("\n")
-    return "\n".join(out)
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--include-secrets", action="store_true", help="Include secret files"
+    )
+    args = ap.parse_args()
 
+    all_files = sorted(iter_files(), key=lambda p: str(p).lower())
 
-def write_report() -> Path:
-    report = generate()
-    OUTPUT_FILE.write_text(report, encoding="utf-8")
-    return OUTPUT_FILE
+    # Build file metadata table
+    lines = []
+    lines.append("# Aegis Event Bus – Full Audit Report\n")
+    lines.append(f"Generated (UTC): {dt.datetime.utcnow():%Y-%m-%d %H:%M:%S}\n")
+    lines.append("## File Inventory\n")
+    lines.append("| Path | Size (bytes) | SHA256 |")
+    lines.append("|------|--------------|--------|")
 
+    for rel in all_files:
+        path = ROOT / rel
+        size = path.stat().st_size
+        digest = sha256_file(path)
+        lines.append(f"| `{rel}` | {size} | `{digest[:16]}...` |")
 
-def main() -> None:
-    report_path = write_report()
-    line_count = sum(1 for _ in report_path.read_text(encoding="utf-8").splitlines())
-    msg = f"✅ Audit bundle written to: {report_path}\nLines: {line_count}"
-    print(textwrap.dedent(msg).strip())
+    lines.append("\n## Source Listings\n")
+    for rel in all_files:
+        path = ROOT / rel
+        if rel.name in SECRET_FILES and not args.include_secrets:
+            continue
+        if not is_source_file(rel):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        lines.append(f"\n### `{rel}`\n")
+        lines.append("```")
+        lines.append(text.rstrip())
+        lines.append("```")
+
+    OUTPUT.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {OUTPUT}")
 
 
 if __name__ == "__main__":
