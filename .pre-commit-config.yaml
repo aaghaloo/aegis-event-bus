@@ -1,19 +1,15 @@
-# .pre-commit-config.yaml
 repos:
-  # Ruff (lint + quick fixes) FIRST
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.4.10
     hooks:
       - id: ruff
         args: [--fix]
 
-  # Black afterwards (final canonical formatting)
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-      - id: black
-
-  # Local hook to block UTF-8 BOM in requirements.txt
   - repo: local
     hooks:
       - id: no-bom
