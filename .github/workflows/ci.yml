@@ -1,4 +1,3 @@
-# .github/workflows/ci.yml
 name: Aegis CI/CD Pipeline
 
 on:
@@ -7,7 +6,6 @@ on:
   pull_request:
     branches: [ "main" ]
 
-# This is the new security hardening section
 permissions:
   contents: read
 
@@ -28,7 +26,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -36,28 +33,32 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+            python-version: "3.11"
 
-      - name: Install Dependencies
+      - name: Install runtime deps
         run: pip install -r requirements.txt
 
-      - name: Run Pytest
+      - name: Run tests
         env:
-          DATABASE_URL: "postgresql+psycopg2://test_user:test_password@localhost:5432/test_db"
-        run: pytest -v
+          DATABASE_URL: postgresql+psycopg2://test_user:test_password@localhost:5432/test_db
+        run: pytest -q
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install Dependencies
-        run: pip install -r requirements.txt
-      - name: Ruff & Black Checks
-        run: |
-          ruff check .
-          black --check .
+          python-version: "3.11"
+
+      - name: Install lint tools
+        run: pip install ruff==0.12.3 black==25.1.0
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Black check
+        run: black --check .
