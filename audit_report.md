@@ -1,8 +1,8 @@
 # Aegis Event Bus – Full Code Audit
 
-Generated (UTC): 2025-07-20T04:38:05
+Generated (UTC): 2025-07-20T05:33:17
 
-Git commit: `f59d5103b7b58c2a0910e2db7a5721c5b367f75c`
+Git commit: `8104f9935535f044d46c848c457482bde8c8da8d`
 
 Python: 3.13.5
 
@@ -30,6 +30,7 @@ Python: 3.13.5
 - `pyproject.toml`
 - `pytest.ini`
 - `requirements.txt`
+- `scripts\make_code_bundle.py`
 - `scripts\make_full_audit.py`
 - `scripts\no_bom_check.py`
 - `scripts\remove_bom.py`
@@ -62,7 +63,8 @@ Python: 3.13.5
 | `pyproject.toml` | 21 | 554 | `fd8b31bd66` | CRLF | UTF-8/Unknown (no BOM) |
 | `pytest.ini` | 2 | 24 | `b281451f0a` | CRLF | UTF-8/Unknown (no BOM) |
 | `requirements.txt` | 36 | 824 | `beda21544e` | CRLF | UTF-8/Unknown (no BOM) |
-| `scripts\make_full_audit.py` | 198 | 5098 | `393095d0d2` | LF | UTF-8/Unknown (no BOM) |
+| `scripts\make_code_bundle.py` | 222 | 6064 | `0cd106e1dc` | CRLF | UTF-8/Unknown (no BOM) |
+| `scripts\make_full_audit.py` | 212 | 5093 | `220c58c66d` | LF | UTF-8/Unknown (no BOM) |
 | `scripts\no_bom_check.py` | 11 | 303 | `8f4920fdac` | CRLF | UTF-8/Unknown (no BOM) |
 | `scripts\remove_bom.py` | 15 | 346 | `33733ab83f` | CRLF | UTF-8/Unknown (no BOM) |
 | `tests\conftest.py` | 49 | 1426 | `f9af561237` | CRLF | UTF-8/Unknown (no BOM) |
@@ -70,7 +72,7 @@ Python: 3.13.5
 | `tests\test_archivist.py` | 27 | 792 | `323cab0573` | CRLF | UTF-8/Unknown (no BOM) |
 | `tests\test_pagination.py` | 45 | 1700 | `51989b7aff` | CRLF | UTF-8/Unknown (no BOM) |
 
-**Total lines:** 1151
+**Total lines:** 1387
 
 ---
 
@@ -977,9 +979,239 @@ httpx~=0.27.0
 
 ```
 
+### `scripts\make_code_bundle.py`
+
+**Lines:** 222  |  **SHA256:** `0cd106e1dc82525f9e2436350660dbb228c534687b70fa415bbb4365dc02df50`  |  **EOL:** CRLF  |  **Encoding:** UTF-8/Unknown (no BOM)
+
+```
+#!/usr/bin/env python
+"""
+Generate a single markdown bundle (code_bundle.md) containing:
+- Metadata (timestamp UTC, git commit if available)
+- File manifest (name, size, lines, sha256)
+- Global integrity hash (sha256 of all per-file hashes concatenated in
+  sorted order)
+- Full contents of each file in fenced code blocks (language guessed
+  by extension)
+
+Intended for: offline audit sharing, reproducibility, integrity
+verification.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import pathlib
+import subprocess
+import sys
+from typing import Iterable, List, Tuple
+
+# ---- Configuration ---------------------------------------------------------
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+ALLOW_EXT = {
+    ".py",
+    ".yml",
+    ".yaml",
+    ".md",
+    ".toml",
+    ".ini",
+    ".txt",
+    ".conf",
+    ".sh",
+    ".sql",
+    ".env",  # only template / sanitized; actual .env skipped below
+}
+
+ALLOW_NAMED = {
+    "Dockerfile",
+    ".gitignore",
+    ".env.example",
+    "Makefile",
+}
+
+EXCLUDE_DIRS = {
+    ".git",
+    ".ruff_cache",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+    "projects_data",
+    "mosquitto/certs",  # exclude certs / binary secrets
+    "pgdata",
+}
+
+EXCLUDE_FILES = {
+    "eventbus.db",
+    "test.db",
+    "tls.crt",
+    "tls.key",
+    "audit_report.md",
+    "code_bundle.md",
+}
+
+OUTPUT_FILE = ROOT / "code_bundle.md"
+
+
+# ---- Helpers ---------------------------------------------------------------
+
+
+def is_allowed(path: pathlib.Path) -> bool:
+    rel = path.relative_to(ROOT).as_posix()
+    if rel in EXCLUDE_FILES:
+        return False
+    for d in EXCLUDE_DIRS:
+        if rel == d or rel.startswith(d + "/"):
+            return False
+    if path.name in ALLOW_NAMED:
+        return True
+    if path.suffix.lower() in ALLOW_EXT:
+        # Skip *real* .env to avoid leaking secrets (allow only example)
+        if path.name == ".env":
+            return False
+        return True
+    return False
+
+
+def iter_files() -> Iterable[pathlib.Path]:
+    for p in ROOT.rglob("*"):
+        if p.is_file() and is_allowed(p):
+            yield p
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def detect_language(path: pathlib.Path) -> str:
+    ext = path.suffix.lower()
+    return {
+        ".py": "python",
+        ".yml": "yaml",
+        ".yaml": "yaml",
+        ".toml": "toml",
+        ".ini": "ini",
+        ".md": "markdown",
+        ".txt": "text",
+        ".conf": "conf",
+        ".sh": "bash",
+        ".sql": "sql",
+        ".env": "bash",
+        "": "",
+    }.get(ext, "")
+
+
+def get_git_commit() -> str:
+    try:
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=ROOT,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        return "N/A"
+
+
+def read_text_preserve(path: pathlib.Path) -> str:
+    """
+    Read file as UTF-8; fall back to latin-1 if necessary (rare).
+    Avoid altering raw content (no newline normalization here).
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return path.read_text(encoding="latin-1")
+
+
+# ---- Main ------------------------------------------------------------------
+
+
+def main() -> None:
+    files: List[pathlib.Path] = sorted(
+        iter_files(),
+        key=lambda p: p.as_posix(),
+    )
+    if not files:
+        print(
+            "No files matched configuration. Adjust ALLOW lists.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    manifest_rows: List[Tuple[str, int, int, str]] = []
+    lines_out: List[str] = []
+
+    utc_now = dt.datetime.utcnow().replace(microsecond=0)
+    git_commit = get_git_commit()
+
+    lines_out.append("# Consolidated Code Bundle\n")
+    lines_out.append(f"Generated (UTC): {utc_now.isoformat()}  \n")
+    lines_out.append(f"Git commit: `{git_commit}`\n")
+    lines_out.append(f"Total files: {len(files)}\n\n")
+
+    for f in files:
+        data = f.read_bytes()
+        text = read_text_preserve(f)
+        line_count = text.count("\n") + (
+            0 if text.endswith("\n") else (1 if text else 0)
+        )
+        file_hash = sha256_bytes(data)
+        manifest_rows.append((f.as_posix(), len(data), line_count, file_hash))
+
+    concat_hash_source = "".join(row[3] for row in manifest_rows).encode()
+    global_hash = sha256_bytes(concat_hash_source)
+
+    lines_out.append("## Integrity\n")
+    lines_out.append(f"- Global concatenated file-hash SHA256: **{global_hash}**\n")
+    lines_out.append(
+        "  (Computed by concatenating each file's SHA256 (sorted by path) "
+        "and hashing that string.)\n\n"
+    )
+
+    lines_out.append("## Manifest\n\n")
+    lines_out.append("| File | Bytes | Lines | SHA256 |\n")
+    lines_out.append("|------|-------|-------|--------|\n")
+    for path_str, size_b, lc, h in manifest_rows:
+        lines_out.append(f"| `{path_str}` | {size_b} | {lc} | `{h}` |\n")
+    lines_out.append("\n---\n\n")
+
+    for f, size_b, lc, h in manifest_rows:
+        lang = detect_language(pathlib.Path(f))
+        lines_out.append(f"### `{f}`\n\n")
+        lines_out.append(f"- Size: {size_b} bytes  \n")
+        lines_out.append(f"- Lines: {lc}  \n")
+        lines_out.append(f"- SHA256: `{h}`\n\n")
+        lines_out.append(f"```{lang}\n")
+        file_text = read_text_preserve(ROOT / f)
+        lines_out.append(file_text)
+        if not file_text.endswith("\n"):
+            lines_out.append("\n")
+        lines_out.append("```\n\n")
+
+    OUTPUT_FILE.write_text(
+        "".join(lines_out),
+        encoding="utf-8",
+        newline="\n",
+    )
+    print(f"Wrote {OUTPUT_FILE}")
+    print(f"Global integrity hash: {global_hash}")
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
 ### `scripts\make_full_audit.py`
 
-**Lines:** 198  |  **SHA256:** `393095d0d20efe341118e55b31b6cd746e726b58a32ee2f740e86afd1485586a`  |  **EOL:** LF  |  **Encoding:** UTF-8/Unknown (no BOM)
+**Lines:** 212  |  **SHA256:** `220c58c66d32d8ce707591360d23e4002f20c85970a6695257d6b976479327ec`  |  **EOL:** LF  |  **Encoding:** UTF-8/Unknown (no BOM)
 
 ```
 #!/usr/bin/env python
@@ -998,15 +1230,14 @@ Works on Windows & *nix (no external deps).
 """
 
 from __future__ import annotations
-import os
-import sys
-import hashlib
-import textwrap
-import datetime as dt
-from pathlib import Path
-import subprocess
 
-# ---- CONFIG: which file extensions / explicit paths to include ----
+import datetime as dt
+import hashlib
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 EXPLICIT_FILES = {
     ".env.example",
     "Dockerfile",
@@ -1017,7 +1248,7 @@ EXPLICIT_FILES = {
     "pytest.ini",
     ".pre-commit-config.yaml",
     ".github/workflows/ci.yml",
-    "audit_report.md",              # will be skipped while writing (guard)
+    "audit_report.md",
 }
 
 INCLUDE_DIRS = {
@@ -1031,17 +1262,19 @@ INCLUDE_DIRS = {
 
 EXTENSIONS = {
     ".py",
-    ".yml", ".yaml",
+    ".yml",
+    ".yaml",
     ".ini",
     ".md",
     ".txt",
     ".conf",
-    ".crt", ".key", ".csr", ".srl",
+    ".crt",
+    ".key",
+    ".csr",
+    ".srl",
 }
 
 OUTPUT_FILE = Path("audit_report.md")
-
-# ------------------------------------------------------------------
 
 
 def rel(path: Path) -> str:
@@ -1059,7 +1292,6 @@ def want_file(p: Path) -> bool:
     rp = rel(p)
     if rp in EXPLICIT_FILES:
         return True
-    # inside INCLUDED dirs?
     if any(rp.startswith(d + os.sep) or rp == d for d in INCLUDE_DIRS):
         if p.suffix.lower() in EXTENSIONS or p.name in EXPLICIT_FILES:
             return True
@@ -1068,10 +1300,7 @@ def want_file(p: Path) -> bool:
 
 def get_git_commit() -> str:
     try:
-        return (
-            subprocess.check_output(["git", "rev-parse", "HEAD"], text=True)
-            .strip()
-        )
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     except Exception:
         return "N/A"
 
@@ -1088,14 +1317,12 @@ def safe_read_bytes(p: Path) -> bytes:
 
 
 def detect_eol(data: bytes) -> str:
-    # Order matters: CRLF contains LF
     if b"\r\n" in data:
         return "CRLF"
     return "LF"
 
 
 def classify_encoding(data: bytes) -> str:
-    # Quick BOM check
     if data.startswith(b"\xef\xbb\xbf"):
         return "UTF-8-BOM"
     return "UTF-8/Unknown (no BOM)"
@@ -1106,44 +1333,46 @@ def main() -> None:
     commit = get_git_commit()
     root = Path.cwd()
 
-    files = sorted([p for p in root.rglob("*") if want_file(p)], key=lambda x: rel(x))
+    files = sorted(
+        [p for p in root.rglob("*") if want_file(p)],
+        key=lambda x: rel(x),
+    )
 
-    # Gather metadata
     meta_rows = []
     total_lines = 0
     for f in files:
         raw = safe_read_bytes(f)
-        text_preview = ""
         try:
             text_preview = raw.decode("utf-8", errors="replace")
         except Exception:
-            pass
-        line_count = text_preview.count("\n") + (1 if text_preview and not text_preview.endswith("\n") else 0)
+            text_preview = ""
+        line_count = text_preview.count("\n") + (
+            1 if text_preview and not text_preview.endswith("\n") else 0
+        )
         total_lines += line_count
-        meta_rows.append({
-            "path": rel(f),
-            "lines": line_count,
-            "sha256": sha256_bytes(raw),
-            "eol": detect_eol(raw),
-            "enc": classify_encoding(raw),
-            "size": len(raw),
-        })
+        meta_rows.append(
+            {
+                "path": rel(f),
+                "lines": line_count,
+                "sha256": sha256_bytes(raw),
+                "eol": detect_eol(raw),
+                "enc": classify_encoding(raw),
+                "size": len(raw),
+            }
+        )
 
-    # Build report
     out = []
-    out.append(f"# Aegis Event Bus – Full Code Audit\n")
+    out.append("# Aegis Event Bus – Full Code Audit\n")
     out.append(f"Generated (UTC): {now.isoformat()}\n")
     out.append(f"Git commit: `{commit}`\n")
     out.append(f"Python: {sys.version.split()[0]}\n")
     out.append("---\n")
 
-    # Tree (depth limited)
     out.append("## Repository Tree (selected)\n")
     for f in files:
         out.append(f"- `{rel(f)}`")
     out.append("")
 
-    # Summary table
     out.append("## File Summary\n")
     header = "| File | Lines | Bytes | SHA256 | EOL | Encoding |"
     sep = "|------|-------|-------|--------|-----|----------|"
@@ -1152,7 +1381,14 @@ def main() -> None:
     for r in meta_rows:
         short_hash = r["sha256"][:10]
         out.append(
-            f"| `{r['path']}` | {r['lines']} | {r['size']} | `{short_hash}` | {r['eol']} | {r['enc']} |"
+            "| `{path}` | {lines} | {size} | `{hash}` | {eol} | {enc} |".format(
+                path=r["path"],
+                lines=r["lines"],
+                size=r["size"],
+                hash=short_hash,
+                eol=r["eol"],
+                enc=r["enc"],
+            )
         )
     out.append(f"\n**Total lines:** {total_lines}\n")
     out.append("---\n")
@@ -1166,12 +1402,22 @@ def main() -> None:
             text = raw.decode("utf-8", errors="replace")
         except Exception:
             text = "<<BINARY OR UNREADABLE>>"
+
         out.append(f"### `{r['path']}`\n")
-        out.append(f"**Lines:** {r['lines']}  |  **SHA256:** `{r['sha256']}`  |  **EOL:** {r['eol']}  |  **Encoding:** {r['enc']}\n")
+        out.append(
+            "**Lines:** {lines}  |  **SHA256:** `{sha}`  |  **EOL:** {eol}  |  "
+            "**Encoding:** {enc}\n".format(
+                lines=r["lines"],
+                sha=r["sha256"],
+                eol=r["eol"],
+                enc=r["enc"],
+            )
+        )
+
         out.append("```")
         out.append(text)
         if not text.endswith("\n"):
-            out.append("")  # ensure fence separated
+            out.append("")
         out.append("```\n")
 
     OUTPUT_FILE.write_text("\n".join(out), encoding="utf-8")
