@@ -1,10 +1,10 @@
 # tests/test_hash_integrity.py
-# Purpose: verify the Postgres trigger fills sha256. Skips on SQLite (CI default).
+# Purpose: Directly hit Postgres and make sure the trigger fills sha256.
+# Skips ONLY if DATABASE_URL is missing or points to sqlite.
 
 import hashlib
 import os
 import uuid
-from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -12,22 +12,14 @@ from sqlmodel import create_engine
 
 
 def _get_pg_dsn() -> str:
-    # 1) env, 2) .env.local fallback, else sqlite://
-    dsn = os.getenv("DATABASE_URL", "")
-    if not dsn and Path(".env.local").exists():
-        for line in Path(".env.local").read_text().splitlines():
-            if line.startswith("DATABASE_URL="):
-                dsn = line.split("=", 1)[1].strip().strip('"')
-                break
-    return dsn or "sqlite://"
+    return os.getenv("DATABASE_URL", "").strip()
 
 
 @pytest.mark.integration
 def test_audit_log_hash_trigger_direct():
-    """Insert into audit_log and confirm sha256 is filled by trigger."""
     dsn = _get_pg_dsn()
-    if not dsn.startswith("postgresql"):
-        pytest.skip("CI uses SQLite; skipping trigger test.")
+    if not dsn or dsn.startswith("sqlite"):
+        pytest.skip("Not running against Postgres (DATABASE_URL is sqlite or empty).")
 
     engine = create_engine(dsn)
 
@@ -35,18 +27,16 @@ def test_audit_log_hash_trigger_direct():
     action = "unit.test"
 
     with engine.begin() as conn:
+        # insert row (trigger should set sha256)
         conn.execute(
-            text("INSERT INTO audit_log (job_id, action) VALUES (:job_id, :action)"),
-            {"job_id": job_id, "action": action},
+            text("INSERT INTO audit_log (job_id, action) VALUES (:jid, :act)"),
+            {"jid": job_id, "act": action},
         )
-        row = conn.execute(
-            text(
-                "SELECT job_id, sha256 FROM audit_log "
-                "WHERE job_id = :job_id ORDER BY id DESC LIMIT 1"
-            ),
-            {"job_id": job_id},
-        ).one()
+        sha = conn.execute(
+            text("SELECT sha256 FROM audit_log WHERE job_id = :jid"),
+            {"jid": job_id},
+        ).scalar_one()
 
     expected = hashlib.sha256(job_id.encode()).hexdigest()
-    assert row.sha256 == expected
-    assert len(row.sha256) == 64
+    assert sha == expected
+    assert len(sha) == 64
