@@ -181,5 +181,7 @@ cython_debug/
 .cursorindexingignore
 eventbus.db
 .env
+.env.local
+*.env
 tls.key
 tls.crt

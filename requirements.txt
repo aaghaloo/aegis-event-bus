@@ -1,10 +1,6 @@
 # =========================
-# Aegis Event Bus – Requirements
+# Aegis Event Bus â€“ Requirements (Windowsâ€‘friendly)
 # =========================
-# Strategy:
-# - Pin to compatible minor ranges using ~= so you get bug fixes but not breaking major jumps.
-# - Testing & dev tools live here for simplicity (can later split into prod/dev files).
-
 # --- Core Framework ---
 fastapi~=0.111.0
 uvicorn[standard]~=0.30.0
@@ -15,11 +11,10 @@ typer~=0.12.0
 # --- Database & ORM ---
 sqlmodel~=0.0.22
 alembic~=1.13.0
-asyncpg~=0.29.0
-psycopg2-binary~=2.9.0
+psycopg2-binary~=2.9.0       # sync driver (works everywhere)
 
 # --- Security & Auth ---
-bcrypt>=4.1.2,<5
+bcrypt==4.0.1           # 4.1.x breaks passlib
 passlib[bcrypt]~=1.7.4
 python-jose[cryptography]~=3.3.0
 python-multipart~=0.0.9
