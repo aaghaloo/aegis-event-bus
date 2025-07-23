@@ -1,5 +1,5 @@
 # Dockerfile
-# Purpose: Build reproducible image using pinned lock file & run app.
+# Purpose: Build reproducible image using pinned lock file and run app.
 
 FROM python:3.11-slim
 
