@@ -56,8 +56,11 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install cyclonedx-bom
-      # Prefer the lock file for reproducibility; fall back to requirements.txt if you ever drop the lock.
-      - run: cyclonedx-py requirements -r requirements.lock -o sbom.xml
+      # Option A: from lock file (preferred)
+      - run: cyclonedx-py requirements -i requirements.lock -o sbom.xml
+      # If the above ever breaks again, uncomment this env scan instead:
+      # - run: pip install -r requirements.lock
+      # - run: cyclonedx-py env -o sbom.xml
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
