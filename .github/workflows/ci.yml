@@ -20,6 +20,7 @@ jobs:
   integration-postgres:
     needs: lint-test
     runs-on: ubuntu-latest
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -33,14 +34,16 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
+
     env:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+      PG_TRIGGER_TEST_DSN: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: echo "DATABASE_URL=$DATABASE_URL"
+      - run: echo "PG_TRIGGER_TEST_DSN=$PG_TRIGGER_TEST_DSN"
       - run: alembic upgrade head
       - run: pytest -k hash_integrity -v
