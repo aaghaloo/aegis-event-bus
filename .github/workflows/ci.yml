@@ -2,63 +2,44 @@ name: Aegis CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
-
-permissions:
-  contents: read
 
 jobs:
-  test:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pre-commit run --all-files
+      - run: pytest -q
+
+  integration-postgres:
+    needs: lint-test
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - "5432:5432"
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: [ "5432:5432" ]
         options: >-
-          --health-cmd "pg_isready -U test_user -d test_db"
-          --health-interval 10s
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-            python-version: "3.11"
-
-      - name: Install runtime deps
-        run: pip install -r requirements.txt
-
-      - name: Run tests
-        env:
-          DATABASE_URL: postgresql+psycopg2://test_user:test_password@localhost:5432/test_db
-        run: pytest -q
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install lint tools
-        run: pip install ruff==0.12.3 black==25.1.0
-
-      - name: Ruff check
-        run: ruff check .
-
-      - name: Black check
-        run: black --check .
+      - run: pip install -r requirements.txt
+      - run: alembic upgrade head
+      - run: pytest -k hash_integrity -v
