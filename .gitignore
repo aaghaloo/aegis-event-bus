@@ -185,3 +185,12 @@ eventbus.db
 *.env
 tls.key
 tls.crt
+
+# audit bundles (local only)
+audit_report*.md
+code_bundle.md
+# generated audit bundles
+audit_report.md
+audit_report_full.md
+audit_full.md
+code_bundle.md
