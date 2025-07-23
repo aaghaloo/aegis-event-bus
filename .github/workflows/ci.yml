@@ -36,7 +36,9 @@ jobs:
           --health-retries 5
 
     env:
+      # One place to define DSN for BOTH alembic and the test
       PG_TRIGGER_TEST_DSN: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
 
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +46,11 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: echo "PG_TRIGGER_TEST_DSN=$PG_TRIGGER_TEST_DSN"
-      - run: alembic upgrade head
-      - run: pytest -k hash_integrity -v
+      - name: Show DSNs (masked values will appear as ***)
+        run: |
+          echo "PG_TRIGGER_TEST_DSN=$PG_TRIGGER_TEST_DSN"
+          echo "DATABASE_URL=$DATABASE_URL"
+      - name: Run migrations
+        run: alembic upgrade head
+      - name: Run ONLY the trigger test on PG
+        run: pytest -k hash_integrity -v

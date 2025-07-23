@@ -1,7 +1,5 @@
 # tests/test_hash_integrity.py
-# Purpose: verify Postgres trigger fills sha256.
-# Runs ONLY if we can connect to a real Postgres DSN.
-# Falls back to skip when connection fails or DSN is sqlite.
+# Purpose: Prove the Postgres trigger sets sha256. Only skip if we truly have no PG DSN.
 
 import hashlib
 import os
@@ -14,28 +12,22 @@ from sqlmodel import create_engine
 
 def _pick_dsn() -> str:
     """
-    Prefer a dedicated var set in CI (PG_TRIGGER_TEST_DSN). Otherwise use DATABASE_URL.
+    Prefer PG_TRIGGER_TEST_DSN (so CI can override),
+    else DATABASE_URL. Return '' if nothing.
     """
-    return (os.getenv("PG_TRIGGER_TEST_DSN") or os.getenv("DATABASE_URL", "")).strip()
+    return (os.getenv("PG_TRIGGER_TEST_DSN") or os.getenv("DATABASE_URL") or "").strip()
 
 
 @pytest.mark.integration
 def test_audit_log_hash_trigger_direct():
     dsn = _pick_dsn()
 
-    # If still empty or sqlite -> skip
+    # Skip ONLY if we genuinely don't have a Postgres DSN
     if not dsn or dsn.startswith("sqlite"):
-        pytest.skip(f"Skipping: DSN looks non-PG ({dsn or '<empty>'}).")
+        pytest.skip("No Postgres DSN available; skipping trigger test.")
 
-    # Try to connect; if fails, skip instead of erroring CI
-    try:
-        engine = create_engine(dsn)
-        with engine.begin() as conn:
-            conn.execute(text("SELECT 1"))
-    except Exception as exc:  # pragma: no cover
-        pytest.skip(f"Cannot connect to Postgres DSN ({dsn}): {exc}")
+    engine = create_engine(dsn)
 
-    # Insert and verify trigger
     job_id = f"UT-{uuid.uuid4()}"
     action = "unit.test"
 
