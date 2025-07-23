@@ -1,5 +1,5 @@
 # Dockerfile
-# Purpose: Build reproducible image using pinned lock file and run app.
+# Purpose: Build reproducible image using pinned deps in requirements.lock
 
 FROM python:3.11-slim
 
@@ -8,12 +8,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps for psycopg2
+# psycopg2 needs headers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libpq-dev curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy manifests first for better layer caching
+# Copy deps first for better caching
 COPY requirements.txt requirements.lock ./
 
 # Install pinned deps
@@ -24,4 +24,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD alembic upgrade head && \
+    uvicorn app.main:app --host 0.0.0.0 --port 8000
