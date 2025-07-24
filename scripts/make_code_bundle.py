@@ -14,12 +14,13 @@ verification.
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import pathlib
 import subprocess
 import sys
 from typing import Iterable, List, Tuple
+
+from app.utils.time import utcnow
 
 # ---- Configuration ---------------------------------------------------------
 
@@ -162,7 +163,7 @@ def main() -> None:
     manifest_rows: List[Tuple[str, int, int, str]] = []
     lines_out: List[str] = []
 
-    utc_now = dt.datetime.utcnow().replace(microsecond=0)
+    utc_now = utcnow().replace(microsecond=0)
     git_commit = get_git_commit()
 
     lines_out.append("# Consolidated Code Bundle\n")

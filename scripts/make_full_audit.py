@@ -15,12 +15,13 @@ Works on Windows & *nix (no external deps).
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+from app.utils.time import utcnow
 
 EXPLICIT_FILES = {
     ".env.example",
@@ -113,7 +114,7 @@ def classify_encoding(data: bytes) -> str:
 
 
 def main() -> None:
-    now = dt.datetime.utcnow().replace(microsecond=0)
+    now = utcnow().replace(microsecond=0)
     commit = get_git_commit()
     root = Path.cwd()
 
