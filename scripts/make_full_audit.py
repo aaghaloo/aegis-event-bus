@@ -19,9 +19,8 @@ import hashlib
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-
-from app.utils.time import utcnow
 
 EXPLICIT_FILES = {
     ".env.example",
@@ -114,7 +113,8 @@ def classify_encoding(data: bytes) -> str:
 
 
 def main() -> None:
-    now = utcnow().replace(microsecond=0)
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     commit = get_git_commit()
     root = Path.cwd()
 

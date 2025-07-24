@@ -18,9 +18,8 @@ import hashlib
 import pathlib
 import subprocess
 import sys
+from datetime import datetime, timezone
 from typing import Iterable, List, Tuple
-
-from app.utils.time import utcnow
 
 # ---- Configuration ---------------------------------------------------------
 
@@ -163,7 +162,7 @@ def main() -> None:
     manifest_rows: List[Tuple[str, int, int, str]] = []
     lines_out: List[str] = []
 
-    utc_now = utcnow().replace(microsecond=0)
+    utc_now = datetime.now(timezone.utc).replace(microsecond=0)
     git_commit = get_git_commit()
 
     lines_out.append("# Consolidated Code Bundle\n")
