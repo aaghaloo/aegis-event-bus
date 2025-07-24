@@ -194,3 +194,15 @@ audit_report.md
 audit_report_full.md
 audit_full.md
 code_bundle.md
+#big files
+.git
+.gitignore
+*.md
+tests/
+scripts/
+__pycache__/
+*.pyc
+*.log
+pytest.ini
+.pre-commit-config.yaml
+.alembic.ini.swp
