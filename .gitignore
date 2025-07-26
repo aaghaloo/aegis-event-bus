@@ -206,3 +206,7 @@ __pycache__/
 pytest.ini
 .pre-commit-config.yaml
 .alembic.ini.swp
+# local leftovers
+eventbus_test.db
+.env.bak
+pg_hba.conf

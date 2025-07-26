@@ -1,20 +1,13 @@
 # tests/conftest.py
 """
-Pytest fixtures for the Event Bus service.
+Pytest fixtures for an isolated in-memory SQLite database.
 
-We intentionally set DATABASE_URL *before* importing `app.db` so the
-application uses an in‑memory SQLite engine during tests.
-
-Ruff rule E402 (imports not at top) is suppressed because of this one
-required assignment.
+ * Forces the app to think it is talking to SQLite.
+ * Builds a fresh engine for **each test**, so primary-key counters
+   reset to 1 and tests remain deterministic.
 """
 
-# ruff: noqa: E402
-
 import os
-
-# Must be set before importing app.db so its engine points to SQLite memory.
-os.environ["DATABASE_URL"] = "sqlite://"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,26 +17,47 @@ from sqlmodel import Session, SQLModel, create_engine
 import app.db as db
 from app.main import app
 
-# ---------- shared in-memory engine ----------
-engine = create_engine(
-    "sqlite://",  # single in-memory DB
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,  # one global connection so tables persist across sessions
-)
-db.engine = engine  # make the app use this engine
-# ---------------------------------------------
+# Ensure every library that relies on DATABASE_URL sees SQLite and
+# integration tests that require Postgres will auto-skip.
+os.environ["DATABASE_URL"] = "sqlite://"
 
 
-@pytest.fixture(name="session")
-def session_fixture():
+@pytest.fixture()
+def engine():
+    eng = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,  # keeps the in-memory DB alive per test
+    )
+    yield eng
+    eng.dispose()
+
+
+@pytest.fixture()
+def session(engine):
     SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
+    with Session(engine) as sess:
+        yield sess
     SQLModel.metadata.drop_all(engine)
 
 
-@pytest.fixture(name="client")
-def client_fixture(session: Session):
-    # Override dependency to always return our shared session
-    db.get_session = lambda: session
-    yield TestClient(app)
+@pytest.fixture()
+def client(session, engine):
+    """
+    • Point the application’s engines at our test engine.
+    • Override FastAPI's `get_session` dependency so every request
+      uses a brand-new Session bound to that engine.
+    """
+    db.engine_rw = engine
+    db.engine_ro = engine
+
+    def _session_override():
+        with Session(engine) as s:
+            yield s
+
+    app.dependency_overrides[db.get_session] = _session_override
+
+    cl = TestClient(app)
+    yield cl
+
+    app.dependency_overrides.clear()

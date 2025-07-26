@@ -1,18 +1,26 @@
 # docker-compose.yml
+# (Compose v2 – no top-level “version” key required)
+
 services:
+  # ---------- PostgreSQL ----------
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     env_file: .env
-    ports: [ "${DB_PORT:-5432}:5432" ]
-    volumes: [ pgdata:/var/lib/postgresql/data ]
+    environment:
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/db-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # THIS IS THE MISSING SERVICE
+  # ---------- Mosquitto ----------
   mosquitto:
     image: eclipse-mosquitto:2
     restart: unless-stopped
@@ -24,16 +32,29 @@ services:
       - ./mosquitto/certs:/mosquitto/certs
       - mosquitto_data:/mosquitto/data
 
+  # ---------- Event-Bus API ----------
   eventbus:
     build: .
     restart: unless-stopped
-    env_file: .env
-    ports: [ "8000:8000" ]
-    volumes: [ ./projects_data:/code/projects_data ]
+    env_file: .env            # brings in POSTGRES_* and both passwords
+    environment:              # re-declare so ${…} expansion works
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_RO: ${DATABASE_URL_RO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./projects_data:/code/projects_data
     depends_on:
-      postgres:  { condition: service_healthy }
-      mosquitto: { condition: service_started }
+      postgres:
+        condition: service_healthy   # wait until pg_isready turns green
+      mosquitto:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
 volumes:
   pgdata:
-  mosquitto_data: # Add this volume for mosquitto
+  mosquitto_data:

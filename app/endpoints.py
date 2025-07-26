@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, select, text
 
 from . import archivist, schemas, security
-from .db import get_session
+from .db import get_ro_session, get_session  # <-- added RO helper
 from .models import AuditLog
 
 router = APIRouter()
@@ -19,9 +19,10 @@ MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
 
 
+# ─────────────────────────────────────────────────────────────────────────
 @router.get("/healthz", include_in_schema=False)
-def health_check(session: Session = Depends(get_session)):
-    """A simple health check endpoint that pings the database."""
+def health_check(session: Session = Depends(get_ro_session)):  # <-- RO
+    """Simple DB ping endpoint."""
     session.exec(text("SELECT 1"))
     return {"status": "ok"}
 
@@ -31,9 +32,10 @@ def read_root():
     return {"status": "Aegis Event Bus is online"}
 
 
+# ──────────────────────────  write path  ────────────────────────────────
 @router.post("/job", response_model=schemas.Job, tags=["Jobs"])
 def create_new_job(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session),  # RW
     _: dict = Depends(security.get_current_user),
 ):
     job_id = f"FC-{uuid4()}"
@@ -60,9 +62,10 @@ def create_new_job(
     return {"job_id": job_id}
 
 
+# ──────────────────────────  read path  ─────────────────────────────────
 @router.get("/jobs", response_model=schemas.JobsPage, tags=["Jobs"])
 def list_recent_jobs(
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_ro_session),  # <-- RO
     cursor: int | None = Query(None, description="last row id from prev page"),
     limit: int = Query(20, le=100),
     _: dict = Depends(security.get_current_user),
@@ -72,6 +75,5 @@ def list_recent_jobs(
         stmt = stmt.where(AuditLog.id < cursor)
 
     rows = session.exec(stmt).all()
-
     next_cursor = rows[-1].id if len(rows) == limit else None
     return {"items": rows, "next_cursor": next_cursor}
