@@ -93,3 +93,14 @@ python -m app.cli create-token admin --minutes 1440
 - Python formatting & linting enforced via pre-commit (Black + Ruff).
 - Line endings: LF enforced via `.gitattributes`.
 - Run `pre-commit install` after cloning.
+## Environment variables
+
+| key | purpose |
+|-----|---------|
+| `DB_PW` | random strong password for the **RW** role (`a0_rw_user`) |
+| `DB_RO_PW` | random strong password for the **RO** role (`a0_ro_user`) |
+
+Create a copy of `.env.example` → `.env`, fill the two secrets, then run:
+
+```bash
+docker compose up -d --build
