@@ -1,5 +1,4 @@
-# docker-compose.yml
-# (Compose v2 – no top-level “version” key required)
+# docker-compose.yml  (Compose v2)
 
 services:
   # ---------- PostgreSQL ----------
@@ -9,6 +8,8 @@ services:
     env_file: .env
     environment:
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      DB_PW: ${DB_PW}
+      DB_RO_PW: ${DB_RO_PW}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -36,8 +37,8 @@ services:
   eventbus:
     build: .
     restart: unless-stopped
-    env_file: .env            # brings in POSTGRES_* and both passwords
-    environment:              # re-declare so ${…} expansion works
+    env_file: .env
+    environment:
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_URL_RO: ${DATABASE_URL_RO}
     ports:
@@ -46,7 +47,7 @@ services:
       - ./projects_data:/code/projects_data
     depends_on:
       postgres:
-        condition: service_healthy   # wait until pg_isready turns green
+        condition: service_healthy
       mosquitto:
         condition: service_started
     healthcheck:
