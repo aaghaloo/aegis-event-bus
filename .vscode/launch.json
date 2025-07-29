@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Run Tests (No Warnings)",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "--disable-warnings",
+                "-q"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONWARNINGS": "ignore"
+            }
+        },
+        {
+            "name": "Python: Run Comprehensive Evaluation",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/comprehensive_eval.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONWARNINGS": "ignore"
+            }
+        }
+    ]
+} 

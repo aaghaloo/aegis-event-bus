@@ -5,12 +5,13 @@ from uuid import uuid4
 
 import paho.mqtt.publish as mqtt_publish
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, text
 
 from . import archivist, schemas, security
 from .db import get_ro_session, get_session  # <-- added RO helper
 from .models import AuditLog
+from .validators import Cursor, _validate_job_id
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -39,15 +40,17 @@ def create_new_job(
     _: dict = Depends(security.get_current_user),
 ):
     job_id = f"FC-{uuid4()}"
-    archivist.create_job_folders(job_id, archivist.DATA_ROOT)
+    # Validate job_id using the validation function
+    validated_job_id = _validate_job_id(job_id)
+    archivist.create_job_folders(validated_job_id, archivist.DATA_ROOT)
 
     with session:
-        entry = AuditLog(job_id=job_id, action="job.created")
+        entry = AuditLog(job_id=validated_job_id, action="job.created")
         session.add(entry)
         session.commit()
         session.refresh(entry)
 
-    payload = {"job_id": job_id, "timestamp": entry.timestamp.isoformat()}
+    payload = {"job_id": validated_job_id, "timestamp": entry.timestamp.isoformat()}
     try:
         mqtt_publish.single(
             topic="aegis/job/created",
@@ -57,19 +60,23 @@ def create_new_job(
             tls={"ca_certs": "./mosquitto/certs/ca.crt"},
         )
     except Exception as exc:
-        log.warning("mqtt.publish_failed", job_id=job_id, err=str(exc))
+        log.warning("mqtt.publish_failed", job_id=validated_job_id, err=str(exc))
 
-    return {"job_id": job_id}
+    return {"job_id": validated_job_id}
 
 
 # ──────────────────────────  read path  ─────────────────────────────────
 @router.get("/jobs", response_model=schemas.JobsPage, tags=["Jobs"])
 def list_recent_jobs(
     session: Session = Depends(get_ro_session),  # <-- RO
-    cursor: int | None = Query(None, description="last row id from prev page"),
-    limit: int = Query(20, le=100),
+    cursor: Cursor = Query(None, description="last row id from prev page"),
+    limit: int = Query(20, description="items per page"),
     _: dict = Depends(security.get_current_user),
 ):
+    # Manual validation for limit
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
+
     stmt = select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)
     if cursor:
         stmt = stmt.where(AuditLog.id < cursor)

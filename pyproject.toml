@@ -19,3 +19,19 @@ select = ["E", "F", "W", "I"]
 # Only put *formatting* options here if you customize them.
 # For now we leave it empty so Ruff uses defaults
 # (indent-style, quote-style, etc. not needed unless you want custom behavior).
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short", 
+    "--strict-markers",
+    "--disable-warnings"
+]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+]
