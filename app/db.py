@@ -15,7 +15,10 @@ from typing import Final
 from dotenv import load_dotenv
 from sqlalchemy import exc as _sa_exc
 from sqlalchemy import text as _sa_text
+from sqlalchemy.pool import QueuePool
 from sqlmodel import Session, SQLModel, create_engine
+
+from .config import settings
 
 # ── 1  Environment ────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,8 +38,8 @@ def _clean(url: str) -> str:
 if _RUNNING_TESTS:
     DB_URL_RW = DB_URL_RO = "sqlite://"
 else:
-    DB_URL_RW = _clean(os.getenv("DATABASE_URL", "sqlite:///eventbus.db"))
-    DB_URL_RO = _clean(os.getenv("DATABASE_URL_RO") or DB_URL_RW)
+    DB_URL_RW = _clean(settings.DATABASE_URL or "sqlite:///eventbus.db")
+    DB_URL_RO = _clean(settings.DATABASE_URL_RO or DB_URL_RW)
 
 
 # ── 3  Engine factory ─────────────────────────────────────────────────────────
@@ -48,7 +51,18 @@ def _mk_engine(url: str):
             isolation_level="AUTOCOMMIT",  # <- lets parallel sessions see changes
             echo=False,
         )
-    return create_engine(url, echo=False)
+
+    # PostgreSQL with proper pooling
+    return create_engine(
+        url,
+        echo=False,
+        poolclass=QueuePool,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_recycle=settings.DB_POOL_RECYCLE,
+        pool_pre_ping=True,  # Verify connections before use
+    )
 
 
 engine_rw = _mk_engine(DB_URL_RW)  # main RW engine

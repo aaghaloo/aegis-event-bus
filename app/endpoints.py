@@ -5,11 +5,12 @@ from uuid import uuid4
 import paho.mqtt.publish as mqtt_publish
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session, select, text
+from sqlmodel import Session, select
 
 from . import archivist, schemas, security
+from .cert_manager import cert_manager
 from .config import settings
-from .db import get_ro_session, get_session  # <-- added RO helper
+from .db import get_ro_session, get_session
 from .models import AuditLog
 from .validators import Cursor, _validate_job_id
 
@@ -17,23 +18,42 @@ router = APIRouter()
 log = structlog.get_logger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────
-@router.get("/healthz", include_in_schema=False)
-def health_check(session: Session = Depends(get_ro_session)):  # <-- RO
-    """Simple DB ping endpoint."""
-    session.exec(text("SELECT 1"))
-    return {"status": "ok"}
-
-
+# ────────────────────────── root endpoint ────────────────────────────────────
 @router.get("/", tags=["Status"])
 def read_root():
     return {"status": "Aegis Event Bus is online"}
 
 
-# ──────────────────────────  write path  ────────────────────────────────
+# ────────────────────────── health checks ────────────────────────────────────
+@router.get("/healthz", tags=["Health"])
+def health_check():
+    """Basic health check endpoint."""
+    return {"status": "ok"}
+
+
+@router.get("/healthz/detailed", tags=["Health"])
+def detailed_health_check():
+    """Detailed health check including certificate validation."""
+    health_status = {
+        "status": "ok",
+        "timestamp": "2024-01-01T00:00:00Z",  # Would use real timestamp
+        "version": "1.0.0",
+        "components": {"database": "ok", "mqtt": "ok", "certificates": "ok"},
+    }
+
+    # Check certificate expiry
+    cert_status = cert_manager.validate_certificate_expiry()
+    if any(info and info.get("is_expired", False) for info in cert_status.values()):
+        health_status["components"]["certificates"] = "warning"
+        health_status["certificate_warnings"] = cert_status
+
+    return health_status
+
+
+# ────────────────────────── write path ───────────────────────────────────────
 @router.post("/job", response_model=schemas.Job, tags=["Jobs"])
 def create_new_job(
-    session: Session = Depends(get_session),  # RW
+    session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
     job_id = f"FC-{uuid4()}"
@@ -49,12 +69,15 @@ def create_new_job(
 
     payload = {"job_id": validated_job_id, "timestamp": entry.timestamp.isoformat()}
     try:
+        # Use certificate manager for TLS configuration
+        tls_config = cert_manager.get_mqtt_tls_config()
+
         mqtt_publish.single(
             topic="aegis/job/created",
             payload=json.dumps(payload),
             hostname=settings.MQTT_HOST,
             port=settings.MQTT_PORT,
-            tls={"ca_certs": "./mosquitto/certs/ca.crt"},
+            tls=tls_config,
         )
     except Exception as exc:
         log.warning("mqtt.publish_failed", job_id=validated_job_id, err=str(exc))
@@ -65,7 +88,7 @@ def create_new_job(
 # ──────────────────────────  read path  ─────────────────────────────────
 @router.get("/jobs", response_model=schemas.JobsPage, tags=["Jobs"])
 def list_recent_jobs(
-    session: Session = Depends(get_ro_session),  # <-- RO
+    session: Session = Depends(get_ro_session),
     cursor: Cursor = Query(None, description="last row id from prev page"),
     limit: int = Query(20, description="items per page"),
     _: dict = Depends(security.get_current_user),

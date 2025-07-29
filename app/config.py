@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "aegis_event_bus"
 
+    # Database pooling settings
+    DB_POOL_SIZE: int = Field(default=10, ge=1, le=100)
+    DB_MAX_OVERFLOW: int = Field(default=20, ge=0, le=100)
+    DB_POOL_TIMEOUT: int = Field(default=30, ge=1, le=300)
+    DB_POOL_RECYCLE: int = Field(default=3600, ge=0, le=7200)
+
     # MQTT settings
     MQTT_HOST: str = "mosquitto"
     MQTT_PORT: int = Field(default=8883, ge=1, le=65535)
@@ -42,6 +48,11 @@ class Settings(BaseSettings):
     DEBUG: bool = Field(default=False)
     LOG_LEVEL: str = Field(
         default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$"
+    )
+
+    # User management
+    USERS: Optional[str] = Field(
+        default=None, description="Comma-separated list of username:password pairs"
     )
 
     # Additional settings (allow extra)
