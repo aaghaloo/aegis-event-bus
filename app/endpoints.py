@@ -1,6 +1,5 @@
 # app/endpoints.py
 import json
-import os
 from uuid import uuid4
 
 import paho.mqtt.publish as mqtt_publish
@@ -9,15 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, text
 
 from . import archivist, schemas, security
+from .config import settings
 from .db import get_ro_session, get_session  # <-- added RO helper
 from .models import AuditLog
 from .validators import Cursor, _validate_job_id
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
-
-MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -55,8 +52,8 @@ def create_new_job(
         mqtt_publish.single(
             topic="aegis/job/created",
             payload=json.dumps(payload),
-            hostname=MQTT_HOST,
-            port=MQTT_PORT,
+            hostname=settings.MQTT_HOST,
+            port=settings.MQTT_PORT,
             tls={"ca_certs": "./mosquitto/certs/ca.crt"},
         )
     except Exception as exc:

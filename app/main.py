@@ -7,7 +7,12 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from . import endpoints, logging_config, security
-from .middleware import SecurityHeadersMiddleware
+from .config import settings
+from .middleware_security import (
+    RateLimitMiddleware,
+    RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
+)
 
 # ---- logging & metrics setup ----
 logging_config.setup_logging()
@@ -19,9 +24,11 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Aegis Event Bus", lifespan=lifespan)
+app = FastAPI(title="Aegis Event Bus", lifespan=lifespan, debug=settings.DEBUG)
 
-# Security headers
+# Security middleware (order matters - add most specific first)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60, burst_limit=10)
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Prometheus metrics
