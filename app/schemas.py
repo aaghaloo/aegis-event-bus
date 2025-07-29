@@ -49,23 +49,9 @@ class TaskCreate(BaseModel):
     """Schema for task creation."""
 
     job_id: str
+    agent_id: str
     payload: Dict[str, Any]
     required_capabilities: Optional[List[str]] = None
-
-
-class TaskStatus(BaseModel):
-    """Schema for task status response."""
-
-    task_id: str
-    agent_id: Optional[str]
-    job_id: str
-    status: TaskStatus
-    payload: Dict[str, Any]
-    result: Optional[Dict[str, Any]]
-    error_message: Optional[str]
-    created_at: str
-    assigned_at: Optional[str]
-    completed_at: Optional[str]
 
 
 class TaskAssignment(BaseModel):

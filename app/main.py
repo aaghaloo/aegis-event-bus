@@ -14,6 +14,7 @@ from .middleware_security import (
     RequestLoggingMiddleware,
     SecurityHeadersMiddleware,
 )
+from .task_router import router as task_router
 
 # ---- logging & metrics setup ----
 logging_config.setup_logging()
@@ -42,3 +43,4 @@ Instrumentator().instrument(app).expose(app, include_in_schema=False)
 app.include_router(endpoints.router)
 app.include_router(security.router)
 app.include_router(agent_router)
+app.include_router(task_router)

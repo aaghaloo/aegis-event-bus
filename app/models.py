@@ -3,6 +3,7 @@
 import datetime as dt
 from enum import Enum
 from typing import List, Optional
+from uuid import uuid4
 
 from sqlalchemy import JSON, Column, DateTime
 from sqlmodel import Field, SQLModel
@@ -87,7 +88,11 @@ class Task(SQLModel, table=True):
 
     __tablename__ = "tasks"
 
-    task_id: str = Field(primary_key=True, description="Unique task identifier")
+    task_id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        primary_key=True,
+        description="Unique task identifier",
+    )
     agent_id: str = Field(foreign_key="agents.agent_id", index=True)
     job_id: str = Field(index=True, description="Associated job ID")
     status: TaskStatus = Field(default=TaskStatus.PENDING)
