@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
-from . import schemas, security
+from . import schemas, security, validators
 from .agent_service import agent_service
 from .db import get_session
 
@@ -45,7 +45,7 @@ def register_agent(
 
 @router.post("/{agent_id}/ping")
 def agent_heartbeat(
-    agent_id: str,
+    agent_id: validators.AgentID,
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
@@ -67,7 +67,7 @@ def agent_heartbeat(
 
 @router.get("/{agent_id}/status")
 def get_agent_status(
-    agent_id: str,
+    agent_id: validators.AgentID,
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
@@ -99,17 +99,17 @@ def get_available_agents(
 ):
     """Get list of available agents that match required capabilities."""
     return agent_service.get_available_agents(
-        session=session, required_capabilities=capabilities
+        session=session, capabilities=capabilities
     )
 
 
 @router.delete("/{agent_id}")
 def deregister_agent(
-    agent_id: str,
+    agent_id: validators.AgentID,
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
-    """Deregister an agent (mark as offline)."""
+    """Deregister an agent."""
     success = agent_service.deregister_agent(session=session, agent_id=agent_id)
 
     if not success:
@@ -117,4 +117,4 @@ def deregister_agent(
             status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
         )
 
-    return {"message": f"Agent {agent_id} deregistered successfully"}
+    return {"message": "Agent deregistered successfully"}

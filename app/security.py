@@ -1,4 +1,5 @@
 # app/security.py
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -60,8 +61,8 @@ class UserManager:
 
     def _add_test_user(self):
         """Add test user for development."""
-        # In development, use a simple password that meets basic requirements
-        test_password = "TestPass123!"
+        # In development, use environment variable or generate secure password
+        test_password = os.getenv("TEST_USER_PASSWORD", "TestPass123!")
         self.add_user("testuser", test_password)
 
     def add_user(self, username: str, password: str):

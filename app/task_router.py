@@ -1,8 +1,10 @@
 # app/task_router.py
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
-from app import schemas, security
+from app import schemas, security, validators
 from app.db import get_session
 from app.task_service import TaskService
 
@@ -36,10 +38,100 @@ def create_task(
     }
 
 
+# ---------- fan-out: create multiple tasks for a job ---------------------------
+@router.post("/job/{job_id}/create-bulk", response_model=List[dict])
+def create_tasks_for_job(
+    job_id: validators.JobID,
+    tasks_data: List[schemas.TaskCreate],
+    session: Session = Depends(get_session),
+    _: dict = Depends(security.get_current_user),
+):
+    """
+    Create multiple tasks for a job (fan-out pattern).
+    Each task will be assigned to the specified agent.
+    """
+    svc = TaskService(session)
+    created_tasks = []
+
+    for task_data in tasks_data:
+        # Ensure all tasks belong to the same job
+        if task_data.job_id != job_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Task job_id {task_data.job_id} must match URL job_id {job_id}",
+            )
+
+        task = svc.create_task(
+            job_id=task_data.job_id,
+            agent_id=task_data.agent_id,
+            payload=task_data.payload,
+        )
+
+        created_tasks.append(
+            {
+                "task_id": task.task_id,
+                "job_id": task.job_id,
+                "agent_id": task.agent_id,
+                "status": task.status,
+                "payload": task.payload,
+                "created_at": task.created_at.isoformat(),
+            }
+        )
+
+    return created_tasks
+
+
+# ---------- fan-in: get job summary with task statuses ------------------------
+@router.get("/job/{job_id}/summary", response_model=dict)
+def get_job_summary(
+    job_id: validators.JobID,
+    session: Session = Depends(get_session),
+    _: dict = Depends(security.get_current_user),
+):
+    """
+    Get job summary with task status counts (fan-in pattern).
+    """
+    svc = TaskService(session)
+    tasks = svc.list_by_job(job_id)
+
+    if not tasks:
+        raise HTTPException(status_code=404, detail="No tasks found for job")
+
+    # Count tasks by status
+    status_counts = {}
+    total_tasks = len(tasks)
+    completed_tasks = 0
+    failed_tasks = 0
+
+    for task in tasks:
+        status = task.status.value
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+        if status == "completed":
+            completed_tasks += 1
+        elif status == "failed":
+            failed_tasks += 1
+
+    # Calculate completion percentage
+    completion_percentage = (
+        (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+    )
+
+    return {
+        "job_id": job_id,
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "failed_tasks": failed_tasks,
+        "completion_percentage": round(completion_percentage, 2),
+        "status_counts": status_counts,
+        "is_complete": completed_tasks + failed_tasks == total_tasks,
+    }
+
+
 # ---------- status update ------------------------------------------------------
 @router.post("/{task_id}/update", response_model=dict)
 def update_task(
-    task_id: str,
+    task_id: validators.TaskID,
     upd: schemas.TaskUpdate,
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
@@ -65,7 +157,7 @@ def update_task(
 # ---------- fetch --------------------------------------------------------------
 @router.get("/{task_id}", response_model=dict)
 def get_task(
-    task_id: str,
+    task_id: validators.TaskID,
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
@@ -88,10 +180,11 @@ def get_task(
 
 @router.get("/job/{job_id}", response_model=list[dict])
 def list_tasks_for_job(
-    job_id: str,
+    job_id: validators.JobID,
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
+    svc = TaskService(session)
     return [
         {
             "task_id": task.task_id,
@@ -105,5 +198,5 @@ def list_tasks_for_job(
                 task.completed_at.isoformat() if task.completed_at else None
             ),
         }
-        for task in TaskService(session).list_by_job(job_id)
+        for task in svc.list_by_job(job_id)
     ]

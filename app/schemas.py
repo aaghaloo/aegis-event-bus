@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, field_validator
 
 from .models import AgentStatus, AuditLog, TaskStatus
-from .validators import _validate_job_id
+from .validators import _validate_agent_id, _validate_job_id, _validate_task_id
 
 
 class Job(BaseModel):
@@ -32,6 +32,11 @@ class AgentRegistration(BaseModel):
     agent_id: str
     capabilities: List[str]
 
+    @field_validator("agent_id")
+    @classmethod
+    def validate_agent_id(cls, v: str) -> str:
+        return _validate_agent_id(v)
+
 
 class AgentStatus(BaseModel):
     """Schema for agent status response."""
@@ -53,12 +58,32 @@ class TaskCreate(BaseModel):
     payload: Dict[str, Any]
     required_capabilities: Optional[List[str]] = None
 
+    @field_validator("job_id")
+    @classmethod
+    def validate_job_id(cls, v: str) -> str:
+        return _validate_job_id(v)
+
+    @field_validator("agent_id")
+    @classmethod
+    def validate_agent_id(cls, v: str) -> str:
+        return _validate_agent_id(v)
+
 
 class TaskAssignment(BaseModel):
     """Schema for task assignment."""
 
     task_id: str
     agent_id: str
+
+    @field_validator("task_id")
+    @classmethod
+    def validate_task_id(cls, v: str) -> str:
+        return _validate_task_id(v)
+
+    @field_validator("agent_id")
+    @classmethod
+    def validate_agent_id(cls, v: str) -> str:
+        return _validate_agent_id(v)
 
 
 class TaskUpdate(BaseModel):

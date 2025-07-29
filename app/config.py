@@ -30,9 +30,9 @@ class Settings(BaseSettings):
     # Database settings
     DATABASE_URL: Optional[str] = None
     DATABASE_URL_RO: Optional[str] = None
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_DB: str = "aegis_event_bus"
+    POSTGRES_USER: str = Field(default="postgres", description="Database username")
+    POSTGRES_PASSWORD: str = Field(default="", description="Database password")
+    POSTGRES_DB: str = Field(default="aegis_event_bus", description="Database name")
 
     # Database pooling settings
     DB_POOL_SIZE: int = Field(default=10, ge=1, le=100)
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     DB_POOL_RECYCLE: int = Field(default=3600, ge=0, le=7200)
 
     # MQTT settings
-    MQTT_HOST: str = "mosquitto"
+    MQTT_HOST: str = Field(default="mosquitto", description="MQTT broker hostname")
     MQTT_PORT: int = Field(default=8883, ge=1, le=65535)
 
     # Application settings
@@ -70,6 +70,14 @@ class Settings(BaseSettings):
         # For now, always generate a secure key in development
         # In production, this should be set via environment variable
         return secrets.token_urlsafe(32)
+
+    @field_validator("POSTGRES_PASSWORD")
+    @classmethod
+    def validate_postgres_password(cls, v: str) -> str:
+        """Ensure database password is not empty in production."""
+        if cls.is_production and not v:
+            raise ValueError("POSTGRES_PASSWORD must be set in production")
+        return v
 
     @property
     def is_production(self) -> bool:
