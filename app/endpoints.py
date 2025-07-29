@@ -12,6 +12,7 @@ from .cert_manager import cert_manager
 from .config import settings
 from .db import get_ro_session, get_session
 from .models import AuditLog
+from .monitoring import health_checker, performance_monitor
 from .validators import Cursor, _validate_job_id
 
 router = APIRouter()
@@ -48,6 +49,36 @@ def detailed_health_check():
         health_status["certificate_warnings"] = cert_status
 
     return health_status
+
+
+@router.get("/healthz/comprehensive", tags=["Health"])
+def comprehensive_health_check():
+    """Comprehensive health check of all system components."""
+    return health_checker.comprehensive_health_check()
+
+
+# ────────────────────────── monitoring endpoints ──────────────────────────────
+@router.get("/metrics/performance", tags=["Monitoring"])
+def get_performance_metrics(_: dict = Depends(security.get_current_user)):
+    """Get performance metrics (admin only)."""
+    return performance_monitor.get_performance_stats()
+
+
+@router.get("/metrics/system", tags=["Monitoring"])
+def get_system_metrics(_: dict = Depends(security.get_current_user)):
+    """Get system resource metrics (admin only)."""
+    return performance_monitor.get_system_stats()
+
+
+@router.get("/metrics/health", tags=["Monitoring"])
+def get_health_metrics(_: dict = Depends(security.get_current_user)):
+    """Get detailed health metrics (admin only)."""
+    return {
+        "database": health_checker.check_database_health(),
+        "mqtt": health_checker.check_mqtt_health(),
+        "certificates": health_checker.check_certificate_health(),
+        "system": performance_monitor.get_system_stats(),
+    }
 
 
 # ────────────────────────── write path ───────────────────────────────────────

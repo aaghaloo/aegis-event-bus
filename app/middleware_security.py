@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings
+from .monitoring import performance_monitor
 
 log = structlog.get_logger(__name__)
 
@@ -110,7 +111,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Structured request logging middleware."""
+    """Structured request logging middleware with performance monitoring."""
 
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
@@ -129,6 +130,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             duration = time.time() - start_time
 
+            # Record performance metrics
+            performance_monitor.record_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration=duration,
+            )
+
             # Log successful request
             log.info(
                 "request_completed",
@@ -142,6 +151,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         except Exception as e:
             duration = time.time() - start_time
+
+            # Record error metrics
+            performance_monitor.record_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=500,
+                duration=duration,
+            )
 
             # Log error
             log.error(

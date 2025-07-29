@@ -8,7 +8,7 @@ from app.models import AuditLog
 
 def _login_and_get_headers(client: TestClient):
     """Helper function to log in and get auth headers."""
-    data = {"username": "testuser", "password": "testpassword"}
+    data = {"username": "testuser", "password": "TestPass123!"}
     token = client.post("/token", data=data).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 

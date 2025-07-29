@@ -50,7 +50,7 @@ def test_unauthenticated_routes(client: TestClient):
 def test_auth_and_workflow(client: TestClient, session: Session):
     # 1. Obtain JWT
     token = client.post(
-        "/token", data={"username": "testuser", "password": "testpassword"}
+        "/token", data={"username": "testuser", "password": "TestPass123!"}
     ).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
