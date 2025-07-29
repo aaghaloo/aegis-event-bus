@@ -8,7 +8,7 @@ import secrets
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -70,11 +70,12 @@ class Settings(BaseSettings):
         """Check if running in development."""
         return self.ENV.lower() == "development"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore"  # Allow extra fields from environment
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",  # Allow extra fields from environment
+    )
 
 
 @lru_cache()

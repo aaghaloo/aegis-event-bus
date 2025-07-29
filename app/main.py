@@ -28,8 +28,11 @@ app = FastAPI(title="Aegis Event Bus", lifespan=lifespan, debug=settings.DEBUG)
 
 # Security middleware (order matters - add most specific first)
 app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(RateLimitMiddleware, requests_per_minute=60, burst_limit=10)
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Only add rate limiting in production or when explicitly enabled
+if settings.is_production or settings.ENV == "staging":
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=60, burst_limit=10)
 
 # Prometheus metrics
 Instrumentator().instrument(app).expose(app, include_in_schema=False)

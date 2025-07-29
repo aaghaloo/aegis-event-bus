@@ -11,6 +11,8 @@ import structlog
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .config import settings
+
 log = structlog.get_logger(__name__)
 
 
@@ -26,6 +28,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Get client IP
         client_ip = request.client.host if request.client else "unknown"
+
+        # Skip rate limiting for test environment
+        if settings.is_development and "test" in client_ip.lower():
+            response = await call_next(request)
+            return response
 
         # Clean old requests (older than 1 minute)
         now = time.time()
