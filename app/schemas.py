@@ -1,9 +1,9 @@
 # app/schemas.py
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, field_validator
 
-from .models import AuditLog
+from .models import AgentStatus, AuditLog, TaskStatus
 from .validators import _validate_job_id
 
 
@@ -24,3 +24,60 @@ class Token(BaseModel):
 class JobsPage(BaseModel):
     items: List[AuditLog]
     next_cursor: Optional[int] = None
+
+
+class AgentRegistration(BaseModel):
+    """Schema for agent registration."""
+
+    agent_id: str
+    capabilities: List[str]
+
+
+class AgentStatus(BaseModel):
+    """Schema for agent status response."""
+
+    agent_id: str
+    status: AgentStatus
+    capabilities: List[str]
+    last_heartbeat: str
+    is_stale: bool
+    created_at: str
+    updated_at: str
+
+
+class TaskCreate(BaseModel):
+    """Schema for task creation."""
+
+    job_id: str
+    payload: Dict[str, Any]
+    required_capabilities: Optional[List[str]] = None
+
+
+class TaskStatus(BaseModel):
+    """Schema for task status response."""
+
+    task_id: str
+    agent_id: Optional[str]
+    job_id: str
+    status: TaskStatus
+    payload: Dict[str, Any]
+    result: Optional[Dict[str, Any]]
+    error_message: Optional[str]
+    created_at: str
+    assigned_at: Optional[str]
+    completed_at: Optional[str]
+
+
+class TaskAssignment(BaseModel):
+    """Schema for task assignment."""
+
+    task_id: str
+    agent_id: str
+
+
+class TaskUpdate(BaseModel):
+    """Schema for task status update."""
+
+    status: TaskStatus
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from . import endpoints, logging_config, security
+from .agent_router import router as agent_router
 from .config import settings
 from .middleware_security import (
     RateLimitMiddleware,
@@ -40,3 +41,4 @@ Instrumentator().instrument(app).expose(app, include_in_schema=False)
 # Routers
 app.include_router(endpoints.router)
 app.include_router(security.router)
+app.include_router(agent_router)
