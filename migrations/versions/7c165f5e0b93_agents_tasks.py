@@ -1,7 +1,7 @@
 """agents & tasks
 
 Revision ID: 7c165f5e0b93
-Revises: 6c8c8c8c8c8c
+Revises: bd536313df34_tz_default
 Create Date: 2024-01-01 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "7c165f5e0b93"
-down_revision = "6c8c8c8c8c8c"
+down_revision = "bd536313df34_tz_default"
 branch_labels = None
 depends_on = None
 
