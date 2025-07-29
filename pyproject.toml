@@ -1,5 +1,40 @@
 # pyproject.toml
 
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-event-bus"
+version = "0.1.0"
+description = "Aegis Event Bus Application"
+authors = [{name = "Aegis Team"}]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sqlmodel",
+    "pydantic",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+    "python-multipart",
+    "python-dotenv",
+    "structlog",
+    "paho-mqtt",
+    "alembic",
+    "psycopg2-binary"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "black",
+    "ruff"
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py311"]
