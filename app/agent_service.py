@@ -4,6 +4,7 @@ Handles agent registration, heartbeat, and status management.
 """
 
 import datetime as dt
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import structlog
@@ -24,24 +25,23 @@ class AgentService:
         self, session: Session, agent_id: str, capabilities: List[str]
     ) -> Agent:
         """Register a new agent or update existing agent."""
-        now = dt.datetime.now(dt.UTC)
+        # Record metrics
+        from .monitoring import performance_monitor
+
+        performance_monitor.prometheus_metrics.record_agent_registration(agent_id)
 
         # Check if agent already exists
-        existing_agent = session.exec(
-            select(Agent).where(Agent.agent_id == agent_id)
-        ).first()
+        existing_agent = session.get(Agent, agent_id)
 
         if existing_agent:
             # Update existing agent
             existing_agent.capabilities = capabilities
             existing_agent.status = AgentStatus.ONLINE
-            existing_agent.last_heartbeat = now
-            existing_agent.updated_at = now
+            existing_agent.last_heartbeat = datetime.now(timezone.utc)
+            existing_agent.updated_at = datetime.now(timezone.utc)
             session.add(existing_agent)
             session.commit()
             session.refresh(existing_agent)
-
-            log.info("agent_updated", agent_id=agent_id, capabilities=capabilities)
             return existing_agent
         else:
             # Create new agent
@@ -49,36 +49,27 @@ class AgentService:
                 agent_id=agent_id,
                 capabilities=capabilities,
                 status=AgentStatus.ONLINE,
-                last_heartbeat=now,
-                created_at=now,
-                updated_at=now,
+                last_heartbeat=datetime.now(timezone.utc),
             )
             session.add(new_agent)
             session.commit()
             session.refresh(new_agent)
-
-            log.info("agent_registered", agent_id=agent_id, capabilities=capabilities)
             return new_agent
 
     def update_heartbeat(self, session: Session, agent_id: str) -> Optional[Agent]:
-        """Update agent heartbeat and status."""
-        now = dt.datetime.now(dt.UTC)
+        """Update agent heartbeat and return agent info."""
+        # Record metrics
+        from .monitoring import performance_monitor
 
-        agent = session.exec(select(Agent).where(Agent.agent_id == agent_id)).first()
+        performance_monitor.prometheus_metrics.record_agent_heartbeat(agent_id)
 
-        if not agent:
-            log.warning("agent_not_found", agent_id=agent_id)
-            return None
-
-        agent.last_heartbeat = now
-        agent.status = AgentStatus.ONLINE
-        agent.updated_at = now
-
-        session.add(agent)
-        session.commit()
-        session.refresh(agent)
-
-        log.debug("agent_heartbeat_updated", agent_id=agent_id)
+        agent = session.get(Agent, agent_id)
+        if agent:
+            agent.last_heartbeat = datetime.now(timezone.utc)
+            agent.updated_at = datetime.now(timezone.utc)
+            session.add(agent)
+            session.commit()
+            session.refresh(agent)
         return agent
 
     def get_agent_status(

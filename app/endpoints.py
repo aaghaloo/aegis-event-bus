@@ -6,6 +6,7 @@ import paho.mqtt.publish as mqtt_publish
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
+from starlette.responses import Response
 
 from . import archivist, schemas, security
 from .cert_manager import cert_manager
@@ -79,6 +80,17 @@ def get_health_metrics(_: dict = Depends(security.get_current_user)):
         "certificates": health_checker.check_certificate_health(),
         "system": performance_monitor.get_system_stats(),
     }
+
+
+@router.get("/metrics/prometheus", tags=["Monitoring"])
+def get_prometheus_metrics():
+    """Get metrics in Prometheus format for monitoring."""
+    from .monitoring import performance_monitor
+
+    return Response(
+        content=performance_monitor.prometheus_metrics.get_prometheus_format(),
+        media_type="text/plain",
+    )
 
 
 # ────────────────────────── write path ───────────────────────────────────────

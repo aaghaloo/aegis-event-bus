@@ -3,8 +3,8 @@ Task service layer for multi-agent system.
 Handles task assignment, status tracking, and result collection.
 """
 
-import datetime as dt
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 import structlog
 from sqlmodel import Session, select
@@ -21,18 +21,18 @@ class TaskService:
         self.session = session
 
     # ---------- create / assign -------------------------------------------------
-    def create_task(
-        self,
-        job_id: str,
-        agent_id: str,
-        payload: dict,
-    ) -> Task:
+    def create_task(self, job_id: str, agent_id: str, payload: Dict[str, Any]) -> Task:
+        """Create a new task."""
+        # Record metrics
+        from .monitoring import performance_monitor
+
+        performance_monitor.prometheus_metrics.record_task_creation(agent_id, "pending")
+
         task = Task(
             job_id=job_id,
             agent_id=agent_id,
-            payload=payload,
             status=TaskStatus.PENDING,
-            created_at=dt.datetime.now(dt.UTC),
+            payload=payload,
         )
         self.session.add(task)
         self.session.commit()
@@ -41,20 +41,25 @@ class TaskService:
 
     # ---------- state transitions ----------------------------------------------
     def update_status(
-        self,
-        task_id: str,
-        status: TaskStatus,
-        result: Optional[dict] = None,
+        self, task_id: str, status: TaskStatus, result: Optional[Dict[str, Any]] = None
     ) -> Task:
-        task = self.session.get(Task, task_id)
+        """Update task status and result."""
+        task = self.get_by_id(task_id)
         if not task:
-            raise ValueError("task not found")
+            raise ValueError(f"Task {task_id} not found")
+
+        # Record metrics
+        from .monitoring import performance_monitor
+
+        performance_monitor.prometheus_metrics.record_task_completion(
+            task.agent_id, status.value
+        )
 
         task.status = status
-        if result is not None:
-            task.result = result
-        if status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
-            task.completed_at = dt.datetime.now(dt.UTC)
+        task.result = result
+
+        if status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+            task.completed_at = datetime.now(timezone.utc)
 
         self.session.add(task)
         self.session.commit()

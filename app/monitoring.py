@@ -17,6 +17,90 @@ from .config import settings
 log = structlog.get_logger(__name__)
 
 
+class PrometheusMetrics:
+    """Prometheus-style metrics collection."""
+
+    def __init__(self):
+        self.metrics = {
+            "http_requests_total": defaultdict(int),
+            "http_request_duration_seconds": deque(maxlen=1000),
+            "http_requests_in_progress": 0,
+            "database_connections_active": 0,
+            "database_connections_idle": 0,
+            "task_creation_total": defaultdict(int),
+            "task_completion_total": defaultdict(int),
+            "agent_heartbeats_total": defaultdict(int),
+            "agent_registrations_total": defaultdict(int),
+        }
+
+    def record_http_request(
+        self, method: str, path: str, status_code: int, duration: float
+    ):
+        """Record HTTP request metrics."""
+        self.metrics["http_requests_total"][f"{method}_{path}_{status_code}"] += 1
+        self.metrics["http_request_duration_seconds"].append(duration)
+
+    def record_task_creation(self, agent_id: str, status: str):
+        """Record task creation metrics."""
+        self.metrics["task_creation_total"][f"{agent_id}_{status}"] += 1
+
+    def record_task_completion(self, agent_id: str, status: str):
+        """Record task completion metrics."""
+        self.metrics["task_completion_total"][f"{agent_id}_{status}"] += 1
+
+    def record_agent_heartbeat(self, agent_id: str):
+        """Record agent heartbeat metrics."""
+        self.metrics["agent_heartbeats_total"][agent_id] += 1
+
+    def record_agent_registration(self, agent_id: str):
+        """Record agent registration metrics."""
+        self.metrics["agent_registrations_total"][agent_id] += 1
+
+    def update_database_metrics(self, active: int, idle: int):
+        """Update database connection metrics."""
+        self.metrics["database_connections_active"] = active
+        self.metrics["database_connections_idle"] = idle
+
+    def get_prometheus_format(self) -> str:
+        """Export metrics in Prometheus format."""
+        lines = []
+
+        # HTTP request metrics
+        for key, count in self.metrics["http_requests_total"].items():
+            lines.append(f'http_requests_total{{method="{key}"}} {count}')
+
+        # HTTP duration metrics
+        if self.metrics["http_request_duration_seconds"]:
+            durations = list(self.metrics["http_request_duration_seconds"])
+            avg_duration = sum(durations) / len(durations)
+            lines.append(f"http_request_duration_seconds_avg {avg_duration}")
+            lines.append(f"http_request_duration_seconds_max {max(durations)}")
+
+        # Database metrics
+        lines.append(
+            f'database_connections_active {self.metrics["database_connections_active"]}'
+        )
+        lines.append(
+            f'database_connections_idle {self.metrics["database_connections_idle"]}'
+        )
+
+        # Task metrics
+        for key, count in self.metrics["task_creation_total"].items():
+            lines.append(f'task_creation_total{{agent_status="{key}"}} {count}')
+
+        for key, count in self.metrics["task_completion_total"].items():
+            lines.append(f'task_completion_total{{agent_status="{key}"}} {count}')
+
+        # Agent metrics
+        for agent_id, count in self.metrics["agent_heartbeats_total"].items():
+            lines.append(f'agent_heartbeats_total{{agent_id="{agent_id}"}} {count}')
+
+        for agent_id, count in self.metrics["agent_registrations_total"].items():
+            lines.append(f'agent_registrations_total{{agent_id="{agent_id}"}} {count}')
+
+        return "\n".join(lines)
+
+
 class PerformanceMonitor:
     """Monitor application performance and resource usage."""
 
@@ -25,6 +109,7 @@ class PerformanceMonitor:
         self.error_counts = defaultdict(int)
         self.start_time = datetime.now()
         self._last_gc_stats = None
+        self.prometheus_metrics = PrometheusMetrics()
 
     def record_request(self, method: str, path: str, status_code: int, duration: float):
         """Record a request for performance monitoring."""
@@ -37,6 +122,9 @@ class PerformanceMonitor:
                 "timestamp": datetime.now(),
             }
         )
+
+        # Record Prometheus metrics
+        self.prometheus_metrics.record_http_request(method, path, status_code, duration)
 
         # Log slow requests
         if duration > 1.0:  # More than 1 second
@@ -117,12 +205,19 @@ class HealthChecker:
 
             duration = time.time() - start_time
 
+            # Update Prometheus metrics
+            pool = engine_rw.pool
+            self.performance_monitor.prometheus_metrics.update_database_metrics(
+                active=pool.checkedout(), idle=pool.checkedin()
+            )
+
             return {
                 "status": "healthy",
                 "response_time": duration,
-                "connection_pool_size": engine_rw.pool.size(),
-                "connection_pool_checked_in": engine_rw.pool.checkedin(),
-                "connection_pool_checked_out": engine_rw.pool.checkedout(),
+                "connection_pool_size": pool.size(),
+                "connection_pool_checked_in": pool.checkedin(),
+                "connection_pool_checked_out": pool.checkedout(),
+                "connection_pool_overflow": pool.overflow(),
             }
         except Exception as e:
             log.error("database_health_check_failed", error=str(e))
