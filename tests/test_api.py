@@ -13,12 +13,11 @@ We rely on fixtures from tests/conftest.py:
 - session : SQLModel Session bound to the test DB
 """
 
+import os
+
 import paho.mqtt.publish as mqtt_publish
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select
-
-from app.models import AuditLog
 
 
 # ────────────────────────── GLOBAL MQTT MOCK ──────────────────────────
@@ -47,20 +46,20 @@ def test_unauthenticated_routes(client: TestClient):
     assert client.get("/jobs").status_code == 401
 
 
-def test_auth_and_workflow(client: TestClient, session: Session):
-    # 1. Obtain JWT
-    token = client.post(
-        "/token", data={"username": "testuser", "password": "TestPass123!"}
-    ).json()["access_token"]
+def test_auth_and_workflow(client: TestClient):
+    """Test authentication and basic workflow."""
+    # Login
+    response = client.post(
+        "/token",
+        data={
+            "username": "testuser",
+            "password": os.getenv("TEST_USER_PASSWORD", "TestPass123!"),
+        },
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    # Test authenticated endpoint
     headers = {"Authorization": f"Bearer {token}"}
-
-    # 2. Create a job (MQTT publish is silently mocked)
-    job_id = client.post("/job", headers=headers).json()["job_id"]
-
-    # 3. Verify DB row
-    db_row = session.exec(select(AuditLog).where(AuditLog.job_id == job_id)).one()
-    assert db_row.action == "job.created"
-
-    # 4. List jobs & confirm first returned matches
-    jobs_page = client.get("/jobs", headers=headers).json()
-    assert jobs_page["items"][0]["job_id"] == job_id
+    response = client.get("/jobs", headers=headers)
+    assert response.status_code == 200

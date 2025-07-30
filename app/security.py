@@ -62,7 +62,9 @@ class UserManager:
     def _add_test_user(self):
         """Add test user for development."""
         # In development, use environment variable or generate secure password
-        test_password = os.getenv("TEST_USER_PASSWORD", "TestPass123!")
+        test_password = os.getenv("TEST_USER_PASSWORD")
+        if not test_password:
+            raise ValueError("TEST_USER_PASSWORD environment variable must be set")
         self.add_user("testuser", test_password)
 
     def add_user(self, username: str, password: str):

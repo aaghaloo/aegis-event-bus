@@ -179,12 +179,39 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Database files
 eventbus.db
+eventbus_test.db
+
+# Environment files
 .env
 .env.local
 *.env
+.env.bak
+
+# Certificate and key files
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+*.csr
+*.srl
 tls.key
 tls.crt
+ca.crt
+ca.key
+server.crt
+server.key
+client.crt
+client.key
+
+# Secret files
+secrets/
+*.secret
+*.key
+*.pwd
 
 # audit bundles (local only)
 audit_report*.md
@@ -207,6 +234,4 @@ pytest.ini
 .pre-commit-config.yaml
 .alembic.ini.swp
 # local leftovers
-eventbus_test.db
-.env.bak
 pg_hba.conf
