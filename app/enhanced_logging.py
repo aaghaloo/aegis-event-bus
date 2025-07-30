@@ -1,6 +1,6 @@
-# app/logging_config.py
+# app/enhanced_logging.py
 """
-Comprehensive logging configuration for the Aegis Event Bus.
+Enhanced logging configuration for the Aegis Event Bus.
 Provides structured logging with context, performance tracking, and security monitoring.
 """
 
@@ -30,10 +30,11 @@ class ContextualLogger:
     def __init__(self, name: str):
         self.logger = structlog.get_logger(name)
         self.context: Dict[str, Any] = {}
+        self.name = name  # Store the name for access
 
     def bind(self, **kwargs) -> "ContextualLogger":
         """Bind context variables to the logger."""
-        new_logger = ContextualLogger(self.logger.name)
+        new_logger = ContextualLogger(self.name)
         new_logger.logger = self.logger.bind(**kwargs)
         new_logger.context = {**self.context, **kwargs}
         return new_logger
@@ -100,7 +101,7 @@ class ContextualLogger:
         return getattr(self.logger, name)
 
 
-def setup_logging() -> None:
+def setup_enhanced_logging() -> None:
     """Configure comprehensive structured logging for the service."""
 
     # Create logs directory if it doesn't exist
@@ -142,27 +143,30 @@ def setup_logging() -> None:
     )
 
     # Configure standard library logging
-    logging.basicConfig(
-        level=log_level,
-        format="%(message)s",  # structlog already produces JSON
-        stream=sys.stdout,
-        handlers=[
-            # Console handler for development
-            logging.StreamHandler(sys.stdout),
-            # File handler for production
-            (
-                logging.FileHandler(log_dir / "app.log")
-                if settings.is_production
-                else logging.NullHandler()
-            ),
-            # Error file handler
-            (
-                logging.FileHandler(log_dir / "errors.log")
-                if settings.is_production
-                else logging.NullHandler()
-            ),
-        ],
-    )
+    # Clear existing handlers to avoid conflicts
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+
+    # Create handlers
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    # Add console handler
+    root_logger.addHandler(console_handler)
+    root_logger.setLevel(log_level)
+
+    # Add file handlers in production
+    if settings.is_production:
+        app_handler = logging.FileHandler(log_dir / "app.log")
+        app_handler.setLevel(log_level)
+        app_handler.setFormatter(logging.Formatter("%(message)s"))
+        root_logger.addHandler(app_handler)
+
+        error_handler = logging.FileHandler(log_dir / "errors.log")
+        error_handler.setLevel(logging.ERROR)
+        error_handler.setFormatter(logging.Formatter("%(message)s"))
+        root_logger.addHandler(error_handler)
 
     # Configure specific loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -173,7 +177,7 @@ def setup_logging() -> None:
     # Log startup information
     logger = structlog.get_logger(__name__)
     logger.info(
-        "logging_configured",
+        "enhanced_logging_configured",
         log_level=settings.LOG_LEVEL,
         environment=settings.ENV,
         debug_mode=settings.DEBUG,
@@ -205,18 +209,18 @@ def _add_performance_context(logger, method_name, event_dict):
     return event_dict
 
 
-def get_logger(name: str) -> ContextualLogger:
+def get_enhanced_logger(name: str) -> ContextualLogger:
     """Get a contextual logger instance."""
     return ContextualLogger(name)
 
 
 # Global logger instances for common use cases
-security_logger = get_logger("security")
-performance_logger = get_logger("performance")
-database_logger = get_logger("database")
-mqtt_logger = get_logger("mqtt")
-task_logger = get_logger("task")
-agent_logger = get_logger("agent")
+security_logger = get_enhanced_logger("security")
+performance_logger = get_enhanced_logger("performance")
+database_logger = get_enhanced_logger("database")
+mqtt_logger = get_enhanced_logger("mqtt")
+task_logger = get_enhanced_logger("task")
+agent_logger = get_enhanced_logger("agent")
 
 
 def log_request_context(request_id: str, user_id: Optional[str] = None, **kwargs):

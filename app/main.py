@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from . import endpoints, logging_config, security
+from . import endpoints, enhanced_logging, security
 from .agent_router import router as agent_router
 from .config import settings
 from .middleware_security import (
@@ -17,14 +17,20 @@ from .middleware_security import (
 )
 from .task_router import router as task_router
 
-# ---- logging & metrics setup ----
-logging_config.setup_logging()
+# ---- enhanced logging & metrics setup ----
+enhanced_logging.setup_enhanced_logging()
+log = enhanced_logging.get_enhanced_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan manager."""
+    log.info("application_starting", environment=settings.ENV, debug=settings.DEBUG)
+
     # Schema is created/updated by Alembic migrations; nothing to do here.
     yield
+
+    log.info("application_shutting_down")
 
 
 def custom_openapi():
@@ -135,3 +141,5 @@ app.include_router(endpoints.router)
 app.include_router(security.router)
 app.include_router(agent_router)
 app.include_router(task_router)
+
+log.info("application_configured", routers=["endpoints", "security", "agent", "task"])

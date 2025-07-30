@@ -5,16 +5,17 @@ Implements rate limiting, security headers, and request logging.
 """
 
 import time
+import uuid
 from typing import Callable
 
-import structlog
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .enhanced_logging import get_enhanced_logger, log_request_context
 from .monitoring import performance_monitor
-from .security_config import RATE_LIMIT_CONFIG, SECURITY_HEADERS
+from .security_config import SECURITY_HEADERS
 
-log = structlog.get_logger(__name__)
+log = get_enhanced_logger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -41,106 +42,103 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Implement rate limiting for API endpoints."""
 
-    def __init__(self, app):
+    def __init__(self, app, requests_per_minute: int = 60, burst_limit: int = 10):
         super().__init__(app)
+        self.requests_per_minute = requests_per_minute
+        self.burst_limit = burst_limit
         self.request_counts = {}
-        self.lockout_until = {}
+        self.logger = get_enhanced_logger("rate_limit")
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        client_ip = request.client.host
+    def _get_client_key(self, request: Request) -> str:
+        """Get client identifier for rate limiting."""
+        # Use X-Forwarded-For if available, otherwise client IP
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
 
-        # Skip rate limiting for test environments
-        if client_ip in ["127.0.0.1", "localhost", "test"]:
-            return await call_next(request)
+    def _is_rate_limited(self, client_key: str) -> bool:
+        """Check if client is rate limited."""
+        now = time.time()
+        window_start = now - 60  # 1 minute window
 
-        # Check if client is locked out
-        if client_ip in self.lockout_until:
-            if time.time() < self.lockout_until[client_ip]:
-                return Response(
-                    content="Rate limit exceeded. Please try again later.",
-                    status_code=429,
-                    headers={"Retry-After": "300"},
-                )
-            else:
-                del self.lockout_until[client_ip]
+        # Clean old entries
+        if client_key in self.request_counts:
+            self.request_counts[client_key] = [
+                req_time
+                for req_time in self.request_counts[client_key]
+                if req_time > window_start
+            ]
 
-        # Determine rate limit based on endpoint
-        path = request.url.path
-        if path.startswith("/auth"):
-            limit_key = "auth"
-        elif path.startswith("/health"):
-            limit_key = "health"
-        elif path.startswith("/api"):
-            limit_key = "api"
-        else:
-            limit_key = "default"
-
-        limit_config = RATE_LIMIT_CONFIG.get(limit_key, "100/minute")
-        max_requests, window = self._parse_rate_limit(limit_config)
+        # Check burst limit
+        if client_key in self.request_counts:
+            recent_requests = len(self.request_counts[client_key])
+            if recent_requests >= self.burst_limit:
+                return True
 
         # Check rate limit
-        current_time = time.time()
-        window_start = current_time - window
+        if client_key in self.request_counts:
+            total_requests = len(self.request_counts[client_key])
+            if total_requests >= self.requests_per_minute:
+                return True
 
-        if client_ip not in self.request_counts:
-            self.request_counts[client_ip] = []
+        return False
 
-        # Remove old requests outside the window
-        self.request_counts[client_ip] = [
-            req_time
-            for req_time in self.request_counts[client_ip]
-            if req_time > window_start
-        ]
+    def _record_request(self, client_key: str):
+        """Record a request for rate limiting."""
+        now = time.time()
+        if client_key not in self.request_counts:
+            self.request_counts[client_key] = []
+        self.request_counts[client_key].append(now)
 
-        # Check if limit exceeded
-        if len(self.request_counts[client_ip]) >= max_requests:
-            # Lock out client for 5 minutes
-            self.lockout_until[client_ip] = current_time + 300
-            log.warning("rate_limit_exceeded", client_ip=client_ip, path=path)
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        client_key = self._get_client_key(request)
+
+        # Check rate limiting
+        if self._is_rate_limited(client_key):
+            self.logger.warning(
+                "rate_limit_exceeded",
+                client_key=client_key,
+                path=str(request.url.path),
+                method=request.method,
+            )
             return Response(
-                content="Rate limit exceeded. Please try again later.",
+                content="Rate limit exceeded",
                 status_code=429,
-                headers={"Retry-After": "300"},
+                headers={"Retry-After": "60"},
             )
 
-        # Record request
-        self.request_counts[client_ip].append(current_time)
+        # Record the request
+        self._record_request(client_key)
 
         return await call_next(request)
 
-    def _parse_rate_limit(self, limit_str: str) -> tuple[int, int]:
-        """Parse rate limit string like '100/minute'."""
-        try:
-            count, period = limit_str.split("/")
-            count = int(count)
-
-            if period == "second":
-                window = 1
-            elif period == "minute":
-                window = 60
-            elif period == "hour":
-                window = 3600
-            else:
-                window = 60  # Default to minute
-
-            return count, window
-        except (ValueError, AttributeError):
-            return 100, 60  # Default fallback
-
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Log all requests with performance metrics."""
+    """Log all requests with performance metrics and context."""
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.logger = get_enhanced_logger("request")
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
+        request_id = str(uuid.uuid4())
+
+        # Set request context for structured logging
+        log_request_context(
+            request_id=request_id,
+            client_ip=request.client.host if request.client else "unknown",
+            user_agent=request.headers.get("user-agent", ""),
+        )
 
         # Log request start
-        log.info(
+        self.logger.info(
             "request_started",
             method=request.method,
             path=str(request.url.path),
-            client_ip=request.client.host,
-            user_agent=request.headers.get("user-agent", ""),
+            query_params=str(request.query_params),
+            headers=dict(request.headers),
         )
 
         try:
@@ -155,14 +153,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 duration=duration,
             )
 
-            # Log request completion
-            log.info(
-                "request_completed",
+            # Log request completion with performance data
+            self.logger.log_request(
                 method=request.method,
                 path=str(request.url.path),
                 status_code=response.status_code,
                 duration=duration,
-                client_ip=request.client.host,
+                request_id=request_id,
             )
 
             return response
@@ -178,14 +175,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 duration=duration,
             )
 
-            # Log error
-            log.error(
+            # Log error with context
+            self.logger.error(
                 "request_error",
                 method=request.method,
                 path=str(request.url.path),
                 error=str(e),
+                error_type=type(e).__name__,
                 duration=duration,
-                client_ip=request.client.host,
+                request_id=request_id,
             )
 
             raise
