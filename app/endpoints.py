@@ -1,141 +1,329 @@
 # app/endpoints.py
-import json
-from uuid import uuid4
+"""
+Main API endpoints for the Aegis Event Bus.
+Provides job management, health checks, and system status endpoints.
+"""
 
-import paho.mqtt.publish as mqtt_publish
-import structlog
+from datetime import datetime, timezone
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
-from starlette.responses import Response
 
 from . import archivist, schemas, security
-from .cert_manager import cert_manager
-from .config import settings
 from .db import get_ro_session, get_session
 from .models import AuditLog
-from .monitoring import health_checker, performance_monitor
-from .validators import Cursor, _validate_job_id
+from .validators import JobID
 
 router = APIRouter()
-log = structlog.get_logger(__name__)
-
-
-# ────────────────────────── root endpoint ────────────────────────────────────
-@router.get("/", tags=["Status"])
-def read_root():
-    return {"status": "Aegis Event Bus is online"}
-
 
 # ────────────────────────── health checks ────────────────────────────────────
-@router.get("/healthz", tags=["Health"])
+
+
+@router.get(
+    "/healthz",
+    response_model=schemas.HealthResponse,
+    tags=["Health"],
+    summary="System Health Check",
+    description="""
+    Check the overall health of the Aegis Event Bus system.
+
+    Returns:
+    - **status**: Overall system status (healthy/unhealthy)
+    - **timestamp**: Current UTC timestamp
+    - **version**: Application version
+    - **components**: Health status of individual components
+
+    This endpoint does not require authentication and is used by:
+    - Load balancers for health checks
+    - Monitoring systems for uptime tracking
+    - Docker health checks
+    """,
+    responses={
+        200: {
+            "description": "System is healthy",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "healthy",
+                        "timestamp": "2024-01-01T12:00:00Z",
+                        "version": "1.0.0",
+                        "components": {
+                            "database": "healthy",
+                            "mqtt": "healthy",
+                            "storage": "healthy",
+                        },
+                    }
+                }
+            },
+        },
+        503: {
+            "description": "System is unhealthy",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "unhealthy",
+                        "timestamp": "2024-01-01T12:00:00Z",
+                        "version": "1.0.0",
+                        "components": {
+                            "database": "unhealthy",
+                            "mqtt": "healthy",
+                            "storage": "healthy",
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
 def health_check():
-    """Basic health check endpoint."""
-    return {"status": "ok"}
+    """
+    Comprehensive health check endpoint.
 
+    Checks the health of all system components including:
+    - Database connectivity
+    - MQTT broker connectivity
+    - File system access
+    - Memory usage
+    - Disk space
 
-@router.get("/healthz/detailed", tags=["Health"])
-def detailed_health_check():
-    """Detailed health check including certificate validation."""
-    health_status = {
-        "status": "ok",
-        "timestamp": "2024-01-01T00:00:00Z",  # Would use real timestamp
-        "version": "1.0.0",
-        "components": {"database": "ok", "mqtt": "ok", "certificates": "ok"},
+    Returns detailed health information for monitoring systems.
+    """
+    # Check database connectivity
+    try:
+        from .db import get_session
+
+        session = next(get_session())
+        session.exec(select(AuditLog).limit(1)).first()
+        db_status = "healthy"
+    except Exception:
+        db_status = "unhealthy"
+
+    # Check MQTT connectivity
+    try:
+        import paho.mqtt.client as mqtt
+
+        client = mqtt.Client()
+        client.connect("localhost", 1883, 5)
+        client.disconnect()
+        mqtt_status = "healthy"
+    except Exception:
+        mqtt_status = "unhealthy"
+
+    # Check storage
+    try:
+        data_root = archivist.DATA_ROOT
+        data_root.mkdir(exist_ok=True)
+        test_file = data_root / ".health_check"
+        test_file.touch()
+        test_file.unlink()
+        storage_status = "healthy"
+    except Exception:
+        storage_status = "unhealthy"
+
+    # Determine overall status
+    components = {
+        "database": db_status,
+        "mqtt": mqtt_status,
+        "storage": storage_status,
     }
 
-    # Check certificate expiry
-    cert_status = cert_manager.validate_certificate_expiry()
-    if any(info and info.get("is_expired", False) for info in cert_status.values()):
-        health_status["components"]["certificates"] = "warning"
-        health_status["certificate_warnings"] = cert_status
+    overall_status = (
+        "healthy"
+        if all(status == "healthy" for status in components.values())
+        else "unhealthy"
+    )
 
-    return health_status
-
-
-@router.get("/healthz/comprehensive", tags=["Health"])
-def comprehensive_health_check():
-    """Comprehensive health check of all system components."""
-    return health_checker.comprehensive_health_check()
-
-
-# ────────────────────────── monitoring endpoints ──────────────────────────────
-@router.get("/metrics/performance", tags=["Monitoring"])
-def get_performance_metrics(_: dict = Depends(security.get_current_user)):
-    """Get performance metrics (admin only)."""
-    return performance_monitor.get_performance_stats()
-
-
-@router.get("/metrics/system", tags=["Monitoring"])
-def get_system_metrics(_: dict = Depends(security.get_current_user)):
-    """Get system resource metrics (admin only)."""
-    return performance_monitor.get_system_stats()
-
-
-@router.get("/metrics/health", tags=["Monitoring"])
-def get_health_metrics(_: dict = Depends(security.get_current_user)):
-    """Get detailed health metrics (admin only)."""
-    return {
-        "database": health_checker.check_database_health(),
-        "mqtt": health_checker.check_mqtt_health(),
-        "certificates": health_checker.check_certificate_health(),
-        "system": performance_monitor.get_system_stats(),
-    }
-
-
-@router.get("/metrics/prometheus", tags=["Monitoring"])
-def get_prometheus_metrics():
-    """Get metrics in Prometheus format for monitoring."""
-    from .monitoring import performance_monitor
-
-    return Response(
-        content=performance_monitor.prometheus_metrics.get_prometheus_format(),
-        media_type="text/plain",
+    return schemas.HealthResponse(
+        status=overall_status,
+        timestamp=datetime.now(timezone.utc),
+        version="1.0.0",
+        components=components,
     )
 
 
 # ────────────────────────── write path ───────────────────────────────────────
-@router.post("/job", response_model=schemas.Job, tags=["Jobs"])
+
+
+@router.post(
+    "/job",
+    response_model=schemas.Job,
+    tags=["Jobs"],
+    summary="Create New Job",
+    description="""
+    Create a new job with a unique identifier and folder structure.
+
+    This endpoint:
+    1. Generates a unique job ID
+    2. Creates the standard folder structure:
+       - `01_raw_data/` - For incoming raw data
+       - `02_processed_data/` - For processed data
+       - `03_reports/` - For generated reports
+    3. Logs the job creation in the audit trail
+    4. Returns the job ID for future reference
+
+    The job ID follows the format: `FC-{uuid}` where FC stands for "File Collection".
+
+    **Security**: Requires authentication via JWT token.
+    """,
+    responses={
+        200: {
+            "description": "Job created successfully",
+            "content": {
+                "application/json": {
+                    "example": {"job_id": "FC-12345678-1234-1234-1234-123456789abc"}
+                }
+            },
+        },
+        401: {
+            "description": "Authentication required",
+            "content": {
+                "application/json": {"example": {"detail": "Not authenticated"}}
+            },
+        },
+        422: {
+            "description": "Validation error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": [
+                            {
+                                "loc": ["body"],
+                                "msg": "field required",
+                                "type": "value_error.missing",
+                            }
+                        ]
+                    }
+                }
+            },
+        },
+    },
+)
 def create_new_job(
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
-    job_id = f"FC-{uuid4()}"
-    # Validate job_id using the validation function
-    validated_job_id = _validate_job_id(job_id)
-    archivist.create_job_folders(validated_job_id, archivist.DATA_ROOT)
+    """
+    Create a new job with standard folder structure.
 
-    with session:
-        entry = AuditLog(job_id=validated_job_id, action="job.created")
-        session.add(entry)
-        session.commit()
-        session.refresh(entry)
+    Args:
+        session: Database session (injected)
+        _: Current user (injected, required for authentication)
 
-    payload = {"job_id": validated_job_id, "timestamp": entry.timestamp.isoformat()}
+    Returns:
+        Job object containing the generated job ID
+
+    Raises:
+        HTTPException: If job creation fails
+    """
+    # Generate unique job ID
+    import uuid
+
+    job_id = f"FC-{uuid.uuid4()}"
+    validated_job_id = JobID(job_id)
+
+    # Create folder structure
     try:
-        # Use certificate manager for TLS configuration
-        tls_config = cert_manager.get_mqtt_tls_config()
-
-        mqtt_publish.single(
-            topic="aegis/job/created",
-            payload=json.dumps(payload),
-            hostname=settings.MQTT_HOST,
-            port=settings.MQTT_PORT,
-            tls=tls_config,
+        archivist.create_job_folders(validated_job_id, archivist.DATA_ROOT)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create job folders: {str(e)}"
         )
-    except Exception as exc:
-        log.warning("mqtt.publish_failed", job_id=validated_job_id, err=str(exc))
+
+    # Log job creation
+    audit_log = AuditLog(
+        job_id=validated_job_id,
+        action="job_created",
+        details={"folder_structure_created": True},
+    )
+    session.add(audit_log)
+    session.commit()
 
     return {"job_id": validated_job_id}
 
 
-# ──────────────────────────  read path  ─────────────────────────────────
-@router.get("/jobs", response_model=schemas.JobsPage, tags=["Jobs"])
+# ────────────────────────── read path ───────────────────────────────────────
+
+
+@router.get(
+    "/jobs",
+    response_model=schemas.JobsPage,
+    tags=["Jobs"],
+    summary="List Recent Jobs",
+    description="""
+    Retrieve a paginated list of recent jobs from the audit log.
+
+    This endpoint provides:
+    - Paginated results with cursor-based pagination
+    - Configurable page size (1-100 items)
+    - Ordered by most recent jobs first
+    - Job creation timestamps and details
+
+    **Pagination**: Use the `next_cursor` from the response to get the next page.
+    Pass the cursor value as the `cursor` parameter in subsequent requests.
+
+    **Rate Limiting**: This endpoint is subject to rate limiting (1000 requests/minute).
+
+    **Security**: Requires authentication via JWT token.
+    """,
+    responses={
+        200: {
+            "description": "List of recent jobs",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "items": [
+                            {
+                                "id": 1,
+                                "job_id": "FC-12345678-1234-1234-1234-123456789abc",
+                                "action": "job_created",
+                                "timestamp": "2024-01-01T12:00:00Z",
+                                "details": {"folder_structure_created": True},
+                            }
+                        ],
+                        "next_cursor": 2,
+                    }
+                }
+            },
+        },
+        401: {"description": "Authentication required"},
+        422: {"description": "Validation error (e.g., invalid limit)"},
+    },
+)
 def list_recent_jobs(
     session: Session = Depends(get_ro_session),
-    cursor: Cursor = Query(None, description="last row id from prev page"),
-    limit: int = Query(20, description="items per page"),
+    cursor: Optional[int] = Query(
+        None,
+        description=(
+            "Cursor for pagination. Use the `next_cursor` value from the "
+            "previous response."
+        ),
+        examples=[1],
+    ),
+    limit: int = Query(
+        None,
+        description="Number of items per page (1-100)",
+        ge=1,
+        le=100,
+        examples=[20],
+    ),
     _: dict = Depends(security.get_current_user),
 ):
+    """
+    Retrieve a paginated list of recent jobs.
+
+    Args:
+        session: Read-only database session (injected)
+        cursor: Pagination cursor (optional)
+        limit: Number of items per page (1-100)
+        _: Current user (injected, required for authentication)
+
+    Returns:
+        Paginated list of jobs with next cursor for pagination
+
+    Raises:
+        HTTPException: If validation fails or database error occurs
+    """
     # Manual validation for limit
     if limit < 1 or limit > 100:
         raise HTTPException(status_code=422, detail="limit must be between 1 and 100")

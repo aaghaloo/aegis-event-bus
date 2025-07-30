@@ -51,8 +51,10 @@ class TaskService:
         # Record metrics
         from .monitoring import performance_monitor
 
+        # Handle both string and enum status values
+        status_value = status.value if hasattr(status, "value") else status
         performance_monitor.prometheus_metrics.record_task_completion(
-            task.agent_id, status.value
+            task.agent_id, status_value
         )
 
         task.status = status
