@@ -17,6 +17,14 @@ from .validators import JobID
 
 router = APIRouter()
 
+
+# ────────────────────────── root endpoint ────────────────────────────────────
+@router.get("/", tags=["Status"])
+def read_root():
+    """Root endpoint for basic status check."""
+    return {"status": "Aegis Event Bus is online"}
+
+
 # ────────────────────────── health checks ────────────────────────────────────
 
 
@@ -301,7 +309,7 @@ def list_recent_jobs(
         examples=[1],
     ),
     limit: int = Query(
-        None,
+        20,
         description="Number of items per page (1-100)",
         ge=1,
         le=100,
@@ -333,5 +341,10 @@ def list_recent_jobs(
         stmt = stmt.where(AuditLog.id < cursor)
 
     rows = session.exec(stmt).all()
-    next_cursor = rows[-1].id if len(rows) == limit else None
+
+    # Fix the pagination logic to handle empty results
+    next_cursor = None
+    if len(rows) == limit and rows:
+        next_cursor = rows[-1].id
+
     return {"items": rows, "next_cursor": next_cursor}
