@@ -73,9 +73,15 @@ class Settings(BaseSettings):
 
     @field_validator("POSTGRES_PASSWORD")
     @classmethod
-    def validate_postgres_password(cls, v: str) -> str:
+    def validate_postgres_password(cls, v: str, info) -> str:
         """Ensure database password is not empty in production."""
-        if cls.is_production and not v:
+        # Get the ENV value from the same data being validated
+        env_value = (
+            info.data.get("ENV", "development")
+            if hasattr(info, "data")
+            else "development"
+        )
+        if env_value.lower() == "production" and not v:
             raise ValueError("POSTGRES_PASSWORD must be set in production")
         return v
 
