@@ -14,6 +14,12 @@ from sqlmodel import Session, select
 from . import archivist, schemas, security
 from .db import get_ro_session, get_session
 from .enhanced_logging import get_enhanced_logger, log_database_operation
+from .error_handling import (
+    ErrorRecoveryStrategy,
+    database_transaction,
+    degraded_mode_manager,
+    with_error_handling,
+)
 from .models import AuditLog
 from .validators import JobID
 
@@ -88,6 +94,7 @@ def read_root():
         },
     },
 )
+@with_error_handling(ErrorRecoveryStrategy.FAIL_FAST)
 def health_check():
     """
     Comprehensive health check endpoint.
@@ -169,6 +176,11 @@ def health_check():
         else "unhealthy"
     )
 
+    # Check degraded mode
+    if degraded_mode_manager.is_degraded():
+        overall_status = "degraded"
+        components["degraded_mode"] = degraded_mode_manager.get_status()
+
     total_duration = time.time() - start_time
     log.info(
         "health_check_completed",
@@ -242,6 +254,7 @@ def health_check():
         },
     },
 )
+@with_error_handling(ErrorRecoveryStrategy.RETRY)
 def create_new_job(
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
@@ -270,7 +283,7 @@ def create_new_job(
 
     log.info("job_id_generated", job_id=validated_job_id)
 
-    # Create folder structure
+    # Create folder structure with error handling
     try:
         folder_start = time.time()
         archivist.create_job_folders(validated_job_id, archivist.DATA_ROOT)
@@ -285,25 +298,25 @@ def create_new_job(
             status_code=500, detail=f"Failed to create job folders: {str(e)}"
         )
 
-    # Log job creation in database
+    # Log job creation in database with transaction handling
     try:
-        db_start = time.time()
-        audit_log = AuditLog(
-            job_id=validated_job_id,
-            action="job_created",
-            details={"folder_structure_created": True},
-        )
-        session.add(audit_log)
-        session.commit()
-        db_duration = time.time() - db_start
+        with database_transaction(session):
+            db_start = time.time()
+            audit_log = AuditLog(
+                job_id=validated_job_id,
+                action="job_created",
+                details={"folder_structure_created": True},
+            )
+            session.add(audit_log)
+            db_duration = time.time() - db_start
 
-        log_database_operation(
-            operation="insert",
-            table="audit_log",
-            duration=db_duration,
-            success=True,
-            job_id=validated_job_id,
-        )
+            log_database_operation(
+                operation="insert",
+                table="audit_log",
+                duration=db_duration,
+                success=True,
+                job_id=validated_job_id,
+            )
     except Exception as e:
         log.error("job_audit_log_failed", job_id=validated_job_id, error=str(e))
         raise HTTPException(
@@ -368,6 +381,7 @@ def create_new_job(
         422: {"description": "Validation error (e.g., invalid limit)"},
     },
 )
+@with_error_handling(ErrorRecoveryStrategy.CIRCUIT_BREAKER)
 def list_recent_jobs(
     session: Session = Depends(get_ro_session),
     cursor: Optional[int] = Query(

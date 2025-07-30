@@ -10,6 +10,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from . import endpoints, enhanced_logging, security
 from .agent_router import router as agent_router
 from .config import settings
+from .error_handling import register_exception_handlers
+from .error_router import router as error_router
 from .middleware_security import (
     RateLimitMiddleware,
     RequestLoggingMiddleware,
@@ -54,6 +56,7 @@ def custom_openapi():
         * **Real-time Communication**: MQTT-based event messaging
         * **Audit Logging**: Comprehensive audit trails for all operations
         * **Health Monitoring**: Built-in health checks and metrics
+        * **Advanced Error Handling**: Circuit breakers, retry mechanisms, and graceful degradation
 
         ## Authentication
 
@@ -65,6 +68,13 @@ def custom_openapi():
         * Default: 100 requests/minute
         * Authentication: 5 requests/minute
         * API endpoints: 1000 requests/minute
+
+        ## Error Handling
+
+        * **Circuit Breakers**: Automatic failure detection and recovery
+        * **Retry Mechanisms**: Exponential backoff for transient failures
+        * **Graceful Degradation**: System continues operating with reduced functionality
+        * **Error Classification**: Automatic categorization and severity assessment
 
         ## Security
 
@@ -103,6 +113,10 @@ def custom_openapi():
         {"name": "Agents", "description": "Agent registration and status management"},
         {"name": "Tasks", "description": "Task assignment and status tracking"},
         {"name": "Health", "description": "System health and monitoring endpoints"},
+        {
+            "name": "Error Handling",
+            "description": "Error handling and recovery endpoints",
+        },
     ]
 
     app.openapi_schema = openapi_schema
@@ -125,6 +139,9 @@ app = FastAPI(
 # Set custom OpenAPI schema
 app.openapi = custom_openapi
 
+# Register exception handlers
+register_exception_handlers(app)
+
 # Security middleware (order matters - add most specific first)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -141,5 +158,9 @@ app.include_router(endpoints.router)
 app.include_router(security.router)
 app.include_router(agent_router)
 app.include_router(task_router)
+app.include_router(error_router)
 
-log.info("application_configured", routers=["endpoints", "security", "agent", "task"])
+log.info(
+    "application_configured",
+    routers=["endpoints", "security", "agent", "task", "error"],
+)
