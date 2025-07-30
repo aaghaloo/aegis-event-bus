@@ -64,7 +64,11 @@ class UserManager:
         # In development, use environment variable or generate secure password
         test_password = os.getenv("TEST_USER_PASSWORD")
         if not test_password:
-            raise ValueError("TEST_USER_PASSWORD environment variable must be set")
+            # For CI environments, use a default password
+            if os.getenv("CI") or os.getenv("GITHUB_ACTIONS"):
+                test_password = "TestPass123!"
+            else:
+                raise ValueError("TEST_USER_PASSWORD environment variable must be set")
         self.add_user("testuser", test_password)
 
     def add_user(self, username: str, password: str):
