@@ -95,11 +95,14 @@ class MonitoringAlerts:
                 health_data = response.json()
 
                 if health_data.get("overall_status") != "healthy":
+                    status_msg = (
+                        f"System health degraded: {health_data.get('overall_status')}"
+                    )
                     alerts.append(
                         {
                             "level": "CRITICAL",
                             "type": "health",
-                            "message": f"System health degraded: {health_data.get('overall_status')}",
+                            "message": status_msg,
                             "timestamp": time.time(),
                         }
                     )
@@ -109,11 +112,12 @@ class MonitoringAlerts:
                 for component, status in checks.items():
                     if status.get("status") != "healthy":
                         component_status = status.get("status")
+                        message = f"{component} component unhealthy: {component_status}"
                         alerts.append(
                             {
                                 "level": "WARNING",
                                 "type": "health",
-                                "message": f"{component} component unhealthy: {component_status}",
+                                "message": message,
                                 "timestamp": time.time(),
                             }
                         )
@@ -142,26 +146,32 @@ class MonitoringAlerts:
 
                 # Check response time
                 avg_response_time = metrics.get("avg_response_time", 0)
-                threshold = self.alert_config["performance_thresholds"]["response_time_ms"]
+                threshold = self.alert_config["performance_thresholds"][
+                    "response_time_ms"
+                ]
                 if avg_response_time > threshold:
+                    message = f"High average response time: {avg_response_time:.0f}ms"
                     alerts.append(
                         {
                             "level": "WARNING",
                             "type": "performance",
-                            "message": f"High average response time: {avg_response_time:.0f}ms",
+                            "message": message,
                             "timestamp": time.time(),
                         }
                     )
 
                 # Check error rate
                 error_rate = metrics.get("error_rate", 0) * 100
-                error_threshold = self.alert_config["performance_thresholds"]["error_rate_percent"]
+                error_threshold = self.alert_config["performance_thresholds"][
+                    "error_rate_percent"
+                ]
                 if error_rate > error_threshold:
+                    message = f"High error rate: {error_rate:.1f}%"
                     alerts.append(
                         {
                             "level": "WARNING",
                             "type": "performance",
-                            "message": f"High error rate: {error_rate:.1f}%",
+                            "message": message,
                             "timestamp": time.time(),
                         }
                     )
@@ -173,7 +183,9 @@ class MonitoringAlerts:
 
                 # Check CPU usage
                 cpu_percent = system_metrics.get("cpu_percent", 0)
-                cpu_threshold = self.alert_config["performance_thresholds"]["cpu_percent"]
+                cpu_threshold = self.alert_config["performance_thresholds"][
+                    "cpu_percent"
+                ]
                 if cpu_percent > cpu_threshold:
                     alerts.append(
                         {
@@ -186,7 +198,9 @@ class MonitoringAlerts:
 
                 # Check memory usage
                 memory_percent = system_metrics.get("memory_percent", 0)
-                memory_threshold = self.alert_config["performance_thresholds"]["memory_percent"]
+                memory_threshold = self.alert_config["performance_thresholds"][
+                    "memory_percent"
+                ]
                 if memory_percent > memory_threshold:
                     alerts.append(
                         {

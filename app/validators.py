@@ -37,6 +37,13 @@ def _validate_safe_string(v: str) -> str:
         r"(\b(and|or)\b\s+\w+\s*[=<>])",
         r"(\b(and|or)\b\s+\d+)",
         r"(\b(and|or)\b\s*[=<>])",
+        r"(\bxp_cmdshell\b)",
+        r"(\bsp_executesql\b)",
+        r"(\b(union|select|insert|update|delete|drop|create|alter)\b\s*[;])",
+        r"(\b(union|select|insert|update|delete|drop|create|alter)\b\s*[;]\s*\w+)",
+        r"(\b(union|select|insert|update|delete|drop|create|alter)\b\s*[;]\s*\w+\s*[;])",
+        r"(\bxp_\w+\b)",
+        r"(\bsp_\w+\b)",
     ]
 
     for pattern in sql_patterns:
