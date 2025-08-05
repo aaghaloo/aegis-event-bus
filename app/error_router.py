@@ -1,7 +1,8 @@
 # app/error_router.py
 """
 Error handling and recovery endpoints.
-Provides endpoints for error management, circuit breaker status, and degraded mode control.
+Provides endpoints for error management, circuit breaker status, and degraded mode
+control.
 """
 
 from datetime import datetime

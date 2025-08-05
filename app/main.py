@@ -56,7 +56,8 @@ def custom_openapi():
         * **Real-time Communication**: MQTT-based event messaging
         * **Audit Logging**: Comprehensive audit trails for all operations
         * **Health Monitoring**: Built-in health checks and metrics
-        * **Advanced Error Handling**: Circuit breakers, retry mechanisms, and graceful degradation
+        * **Advanced Error Handling**: Circuit breakers, retry mechanisms, and graceful
+        degradation
 
         ## Authentication
 
@@ -73,7 +74,8 @@ def custom_openapi():
 
         * **Circuit Breakers**: Automatic failure detection and recovery
         * **Retry Mechanisms**: Exponential backoff for transient failures
-        * **Graceful Degradation**: System continues operating with reduced functionality
+        * **Graceful Degradation**: System continues operating with reduced
+        functionality
         * **Error Classification**: Automatic categorization and severity assessment
 
         ## Security
@@ -103,35 +105,20 @@ def custom_openapi():
     # Add server information
     openapi_schema["servers"] = [
         {"url": "http://localhost:8000", "description": "Development server"},
-        {"url": "https://api.aegis-event-bus.com", "description": "Production server"}
+        {"url": "https://api.aegis-event-bus.com", "description": "Production server"},
     ]
 
     # Add tags metadata
     openapi_schema["tags"] = [
-        {
-            "name": "Authentication",
-            "description": "JWT-based authentication endpoints"
-        },
-        {
-            "name": "Jobs",
-            "description": "Job creation and management"
-        },
-        {
-            "name": "Agents",
-            "description": "Agent registration and status management"
-        },
-        {
-            "name": "Tasks",
-            "description": "Task assignment and status tracking"
-        },
-        {
-            "name": "Health",
-            "description": "System health and monitoring endpoints"
-        },
+        {"name": "Authentication", "description": "JWT-based authentication endpoints"},
+        {"name": "Jobs", "description": "Job creation and management"},
+        {"name": "Agents", "description": "Agent registration and status management"},
+        {"name": "Tasks", "description": "Task assignment and status tracking"},
+        {"name": "Health", "description": "System health and monitoring endpoints"},
         {
             "name": "Error Handling",
-            "description": "Error handling and recovery endpoints"
-        }
+            "description": "Error handling and recovery endpoints",
+        },
     ]
 
     app.openapi_schema = openapi_schema
@@ -175,4 +162,7 @@ app.include_router(agent_router)
 app.include_router(task_router)
 app.include_router(error_router)
 
-log.info("application_configured", routers=["endpoints", "security", "agent", "task", "error"])
+log.info(
+    "application_configured",
+    routers=["endpoints", "security", "agent", "task", "error"],
+)
