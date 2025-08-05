@@ -5,10 +5,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
 from app import schemas, security, validators
+from app.agent_service import agent_service
 from app.db import get_session
 from app.task_service import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+
+def _check_agent_availability(session: Session, agent_id: str) -> bool:
+    """Check if agent is available (online and not stale)."""
+    status_info = agent_service.get_agent_status(session=session, agent_id=agent_id)
+    if not status_info:
+        return False
+
+    # Check if agent is online and not stale
+    return status_info["status"] == "online" and not status_info["is_stale"]
 
 
 # ---------- create -------------------------------------------------------------
@@ -20,7 +31,15 @@ def create_task(
 ):
     """
     Create a task in *pending* state and immediately assign it to target agent.
+    Checks agent registry to ensure agent is online before routing.
     """
+    # Check if agent is available
+    if not _check_agent_availability(session, task_in.agent_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agent {task_in.agent_id} is not available (offline or stale)",
+        )
+
     svc = TaskService(session)
     task = svc.create_task(
         job_id=task_in.job_id,
@@ -49,9 +68,11 @@ def create_tasks_for_job(
     """
     Create multiple tasks for a job (fan-out pattern).
     Each task will be assigned to the specified agent.
+    Checks agent registry to ensure agents are online before routing.
     """
     svc = TaskService(session)
     created_tasks = []
+    skipped_tasks = []
 
     for task_data in tasks_data:
         # Ensure all tasks belong to the same job
@@ -60,6 +81,13 @@ def create_tasks_for_job(
                 status_code=400,
                 detail=f"Task job_id {task_data.job_id} must match URL job_id {job_id}",
             )
+
+        # Check if agent is available
+        if not _check_agent_availability(session, task_data.agent_id):
+            skipped_tasks.append(
+                {"agent_id": task_data.agent_id, "reason": "Agent is offline or stale"}
+            )
+            continue
 
         task = svc.create_task(
             job_id=task_data.job_id,
@@ -78,7 +106,14 @@ def create_tasks_for_job(
             }
         )
 
-    return created_tasks
+    # Return both created and skipped tasks
+    return {
+        "created_tasks": created_tasks,
+        "skipped_tasks": skipped_tasks,
+        "total_requested": len(tasks_data),
+        "total_created": len(created_tasks),
+        "total_skipped": len(skipped_tasks),
+    }
 
 
 # ---------- fan-in: get job summary with task statuses ------------------------

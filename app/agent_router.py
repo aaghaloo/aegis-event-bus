@@ -26,12 +26,14 @@ def register_agent(
         agent = agent_service.register_agent(
             session=session,
             agent_id=agent_data.agent_id,
+            role="default",  # Default role for backward compatibility
             capabilities=agent_data.capabilities,
         )
 
         return {
             "message": "Agent registered successfully",
             "agent_id": agent.agent_id,
+            "role": agent.role,
             "status": agent.status,
             "capabilities": agent.capabilities,
             "created_at": agent.created_at.isoformat(),
@@ -43,13 +45,42 @@ def register_agent(
         )
 
 
-@router.post("/{agent_id}/ping")
+@router.post("/heartbeat", response_model=Dict[str, Any])
 def agent_heartbeat(
+    heartbeat_data: schemas.AgentHeartbeat,
+    session: Session = Depends(get_session),
+    _: dict = Depends(security.get_current_user),
+):
+    """Update agent heartbeat with role and capabilities."""
+    try:
+        agent = agent_service.register_agent(
+            session=session,
+            agent_id=heartbeat_data.agent_id,
+            role=heartbeat_data.role,
+            capabilities=heartbeat_data.capabilities,
+        )
+
+        return {
+            "message": "Heartbeat updated successfully",
+            "agent_id": agent.agent_id,
+            "role": agent.role,
+            "status": agent.status,
+            "last_seen": agent.last_seen.isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update heartbeat: {str(e)}",
+        )
+
+
+@router.post("/{agent_id}/ping")
+def agent_heartbeat_legacy(
     agent_id: validators.AgentID,
     session: Session = Depends(get_session),
     _: dict = Depends(security.get_current_user),
 ):
-    """Update agent heartbeat."""
+    """Update agent heartbeat (legacy endpoint)."""
     agent = agent_service.update_heartbeat(session=session, agent_id=agent_id)
 
     if not agent:
@@ -60,12 +91,13 @@ def agent_heartbeat(
     return {
         "message": "Heartbeat updated",
         "agent_id": agent.agent_id,
+        "role": agent.role,
         "status": agent.status,
-        "last_heartbeat": agent.last_heartbeat.isoformat(),
+        "last_seen": agent.last_seen.isoformat(),
     }
 
 
-@router.get("/{agent_id}/status")
+@router.get("/{agent_id}", response_model=schemas.AgentStatus)
 def get_agent_status(
     agent_id: validators.AgentID,
     session: Session = Depends(get_session),

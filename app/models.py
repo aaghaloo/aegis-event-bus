@@ -52,20 +52,21 @@ class AuditLog(SQLModel, table=True):
     )
 
 
-class Agent(SQLModel, table=True):
+class AgentRegistry(SQLModel, table=True):
     """
     Agent registry for multi-agent system.
     Tracks agent capabilities, status, and heartbeat.
     """
 
-    __tablename__ = "agents"
+    __tablename__ = "agent_registry"
 
     agent_id: str = Field(primary_key=True, description="Unique agent identifier")
+    role: str = Field(description="Agent role (e.g., 'processor', 'analyzer')")
     capabilities: List[str] = Field(
         sa_column=Column(JSON), description="List of agent capabilities"
     )
     status: AgentStatus = Field(default=AgentStatus.OFFLINE)
-    last_heartbeat: dt.datetime = Field(
+    last_seen: dt.datetime = Field(
         default_factory=lambda: dt.datetime.now(dt.UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
         description="Last heartbeat timestamp",
@@ -93,7 +94,7 @@ class Task(SQLModel, table=True):
         primary_key=True,
         description="Unique task identifier",
     )
-    agent_id: str = Field(foreign_key="agents.agent_id", index=True)
+    agent_id: str = Field(foreign_key="agent_registry.agent_id", index=True)
     job_id: str = Field(index=True, description="Associated job ID")
     status: TaskStatus = Field(default=TaskStatus.PENDING)
     payload: dict = Field(sa_column=Column(JSON), description="Task payload/parameters")

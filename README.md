@@ -41,10 +41,17 @@ This is the recommended way to run the application.
     cp .env.example .env
     ```
 
-3.  **Run the Application Stack:**
-    This single command will build and start the FastAPI service and the MQTT broker.
+3.  **Bootstrap Fresh Dev Database:**
+    This single command will build, start, and initialize a fresh development database:
     ```bash
-    docker compose up --build
+    docker compose down -v && docker compose up -d --build
+    ```
+    The `-v` flag removes old volumes to ensure a clean start, and the `--build` flag ensures the latest code is used.
+
+4.  **Verify Setup:**
+    Check that everything is running correctly:
+    ```bash
+    curl -sf http://localhost:8000/healthz  # Should return {"status":"ok"}
     ```
 
 ---
@@ -104,3 +111,4 @@ Create a copy of `.env.example` → `.env`, fill the two secrets, then run:
 
 ```bash
 docker compose up -d --build
+```

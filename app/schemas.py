@@ -134,6 +134,32 @@ class JobsPage(BaseModel):
     )
 
 
+class AgentHeartbeat(BaseModel):
+    """
+    Agent heartbeat request model.
+
+    Used when agents send heartbeat updates to the registry.
+    """
+
+    agent_id: str = Field(
+        description="Unique agent identifier",
+        example="agent-001",
+        min_length=1,
+        max_length=100,
+    )
+    role: str = Field(
+        description="Agent role (e.g., 'processor', 'analyzer')",
+        example="processor",
+        min_length=1,
+        max_length=50,
+    )
+    capabilities: List[str] = Field(
+        description="List of agent capabilities",
+        example=["data_processing", "file_analysis", "report_generation"],
+        min_items=1,
+    )
+
+
 class AgentRegistration(BaseModel):
     """
     Agent registration request model.
@@ -168,6 +194,7 @@ class AgentStatus(BaseModel):
     """
 
     agent_id: str = Field(description="Agent identifier", example="agent-001")
+    role: str = Field(description="Agent role", example="processor")
     status: str = Field(
         description="Current agent status",
         example="online",

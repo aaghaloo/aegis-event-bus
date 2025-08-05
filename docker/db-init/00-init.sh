@@ -1,5 +1,5 @@
-#!/bin/bash
-set -e                                    # stop on first error
+#!/usr/bin/env bash
+set -euxo pipefail                    # fail fast / verbose during init
 echo "▶︎ Bootstrap Aegis DB …"
 
 # 1. create DB if missing -------------------------------------------------
