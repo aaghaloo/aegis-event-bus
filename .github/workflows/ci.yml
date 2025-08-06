@@ -18,9 +18,8 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt pre-commit
       - run: pip install -e .
-      - run: python test_import.py
-      - run: pre-commit run --all-files
-      - run: pytest -q
+      - name: Run comprehensive test suite
+        run: bash scripts/test.sh
 
   security-scan:
     runs-on: ubuntu-latest
