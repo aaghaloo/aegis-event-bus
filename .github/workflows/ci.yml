@@ -19,7 +19,7 @@ jobs:
       - run: pip install -r requirements.txt pre-commit
       - run: pip install -e .
       - name: Run comprehensive test suite
-        run: bash scripts/test.sh
+        run: python scripts/run_tests.py
 
   security-scan:
     runs-on: ubuntu-latest
